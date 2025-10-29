@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // Python Installer and Directory
-        PYTHON_INSTALLER = 'https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe'
+        PYTHON_INSTALLER = 'https://www.python.org/ftp/python/3.13.0/python-3.13.0-arm64.exe'
         PYTHON_DIR = 'C:\\Python313'
 
         // Credentials
@@ -11,15 +11,25 @@ pipeline {
         SMTP_PORT        = '587'
         SMTP_USER        = credentials('smtp-user')
         SMTP_PASS        = credentials('smtp-pass')
+
+        // Email sender and Receiver
+        REPORT_FROM      = credentials('sender-email')
+        REPORT_TO        = credentials('receiver-email')
+        
+        // Confluence login configuration
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
+        
+        // Confluence Space and report configuration
         CONFLUENCE_SPACE = 'DEMO'
-        CONFLUENCE_TITLE = 'CI Test Report'
+        CONFLUENCE_TITLE = 'Test Result Report'
+
+        // GitHub login credentials Configuration
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
         // Paths
-        REPORT_PATH = 'report\\report.html'
+        REPORT_PATH = 'report/report.html'
         VENV_PATH   = '.venv'
     }
 
@@ -73,7 +83,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
                     userRemoteConfigs: [[
-                        url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win.git',
+                        url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win-test.git',
                         credentialsId: 'github-credentials'
                     ]]
                 ])
