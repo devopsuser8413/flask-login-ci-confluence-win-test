@@ -29,9 +29,10 @@ pipeline {
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
         // Paths
-        REPORT_PATH  = 'report/report.html'
-        VENV_PATH    = '.venv'
-        VERSION_FILE = 'report/version.txt'   // 👈 shared version file
+        REPORT_PATH   = 'report/report.html'
+        REPORT_ENH    = 'report/test_result_report_enhanced.html'
+        VENV_PATH     = '.venv'
+        VERSION_FILE  = 'report/version.txt'   // 👈 shared version file
     }
 
     stages {
@@ -66,11 +67,9 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    echo Creating virtual environment if it doesn't exist...
                     if not exist "%VENV_PATH%" (
                         python -m venv %VENV_PATH%
                     )
-
                     echo Python & pip in venv:
                     %VENV_PATH%\\Scripts\\python.exe --version
                     %VENV_PATH%\\Scripts\\pip.exe --version
@@ -98,6 +97,7 @@ pipeline {
                     echo Installing dependencies...
                     %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
                     %VENV_PATH%\\Scripts\\python.exe -m pip install -r requirements.txt
+                    %VENV_PATH%\\Scripts\\python.exe -m pip install beautifulsoup4 matplotlib
                 """
             }
         }
@@ -105,7 +105,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 bat """
-                    echo Running tests...
+                    echo Running tests and generating pytest HTML report...
                     if not exist "report" mkdir report
                     set PYTHONPATH=%CD%
                     %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html || exit /b 0
@@ -114,6 +114,21 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'report\\report.html', fingerprint: true
+                }
+            }
+        }
+
+        stage('Enhance Report (Graphical Summary)') {
+            steps {
+                bat """
+                    echo Enhancing HTML report with charts and highlights...
+                    set PYTHONUTF8=1
+                    %VENV_PATH%\\Scripts\\python.exe enhance_report.py
+                """
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'report\\test_result_report_enhanced.html', fingerprint: true
                 }
             }
         }
@@ -128,12 +143,13 @@ pipeline {
             }
         }
 
-        // ✅ Email Report comes first: increments version.txt and sends email
+        // ✅ Email Report — uses enhanced report and version.txt
         stage('Email Report') {
             steps {
                 bat """
-                    echo Sending test report via email...
+                    echo Sending enhanced test report via email...
                     set PYTHONUTF8=1
+                    set REPORT_PATH=%REPORT_ENH%
                     %VENV_PATH%\\Scripts\\python.exe send_report_email.py
                 """
             }
@@ -145,7 +161,7 @@ pipeline {
             }
         }
 
-        // ✅ Publish to Confluence reads the same version.txt
+        // ✅ Publish to Confluence — same enhanced report + same version
         stage('Publish to Confluence') {
             steps {
                 script {
@@ -157,8 +173,9 @@ pipeline {
                     }
                 }
                 bat """
-                    echo Publishing HTML report to Confluence...
+                    echo Publishing enhanced HTML report to Confluence...
                     set PYTHONUTF8=1
+                    set REPORT_PATH=%REPORT_ENH%
                     %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
                 """
             }
