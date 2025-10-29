@@ -29,11 +29,13 @@ pipeline {
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
         // Paths
-        REPORT_PATH = 'report/report.html'
-        VENV_PATH   = '.venv'
+        REPORT_PATH  = 'report/report.html'
+        VENV_PATH    = '.venv'
+        VERSION_FILE = 'report/version.txt'   // 👈 shared version file
     }
 
     stages {
+
         stage('Install Python if Missing') {
             steps {
                 bat '''
@@ -126,16 +128,7 @@ pipeline {
             }
         }
 
-        stage('Publish to Confluence') {
-            steps {
-                bat """
-                    echo Publishing HTML report to Confluence...
-                    set PYTHONUTF8=1
-                    %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
-                """
-            }
-        }
-
+        // ✅ Email Report comes first: increments version.txt and sends email
         stage('Email Report') {
             steps {
                 bat """
@@ -144,8 +137,32 @@ pipeline {
                     %VENV_PATH%\\Scripts\\python.exe send_report_email.py
                 """
             }
+            post {
+                always {
+                    echo "📦 Archiving version.txt for next stage..."
+                    archiveArtifacts artifacts: "${VERSION_FILE}", onlyIfSuccessful: true
+                }
+            }
         }
 
+        // ✅ Publish to Confluence reads the same version.txt
+        stage('Publish to Confluence') {
+            steps {
+                script {
+                    echo "📥 Restoring version.txt..."
+                    try {
+                        unarchive mapping: ["${VERSION_FILE}" : "${VERSION_FILE}"]
+                    } catch (err) {
+                        echo "⚠️ No version.txt found — starting from v1."
+                    }
+                }
+                bat """
+                    echo Publishing HTML report to Confluence...
+                    set PYTHONUTF8=1
+                    %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
+                """
+            }
+        }
     }
 
     post {
