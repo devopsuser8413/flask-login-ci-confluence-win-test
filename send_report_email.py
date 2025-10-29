@@ -25,26 +25,19 @@ VERSION_FILE = os.path.join(REPORT_DIR, "version.txt")
 # ----------------------------
 # Version tracking helper
 # ----------------------------
-def get_next_version():
-    """Return the next report version based on version.txt tracker."""
-    os.makedirs(REPORT_DIR, exist_ok=True)
-    
-    # Default version
-    version = 1
 
-    # Read last version if file exists
+def get_next_version():
+    """Read, increment, and save the shared report version."""
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    version = 1
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE, "r") as f:
             content = f.read().strip()
             if content.isdigit():
                 version = int(content) + 1
-
-    # Write updated version
     with open(VERSION_FILE, "w") as f:
         f.write(str(version))
-
     return version
-
 
 def get_next_report_filename(report_dir, base_name, version_number):
     """Return report path for the given version."""

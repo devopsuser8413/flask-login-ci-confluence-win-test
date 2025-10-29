@@ -18,6 +18,17 @@ CREATE_NEW_PAGE_PER_VERSION = os.getenv('CREATE_NEW_PAGE_PER_VERSION', 'false').
 auth = HTTPBasicAuth(CONFLUENCE_USER, CONFLUENCE_TOKEN)
 headers = {"Content-Type": "application/json"}
 
+VERSION_FILE = os.path.join(os.path.dirname(REPORT_PATH), "version.txt")
+
+def read_current_version():
+    """Read the existing version number from version.txt (no increment)."""
+    if not os.path.exists(VERSION_FILE):
+        print("⚠️ version.txt not found — defaulting to v1")
+        return 1
+    with open(VERSION_FILE, "r") as f:
+        content = f.read().strip()
+        return int(content) if content.isdigit() else 1
+
 # ----------------------------
 # Incremental report generator
 # ----------------------------
