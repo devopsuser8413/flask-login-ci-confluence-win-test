@@ -1,5 +1,4 @@
 import os
-import re
 import smtplib
 from email.message import EmailMessage
 from urllib.parse import quote
@@ -13,21 +12,17 @@ SMTP_USER = os.environ.get('SMTP_USER')
 SMTP_PASS = os.environ.get('SMTP_PASS')
 TO_EMAIL = os.environ.get('REPORT_TO')
 FROM_EMAIL = os.environ.get('REPORT_FROM')
-REPORT_PATH = os.environ.get('REPORT_PATH')
+REPORT_PATH = os.environ.get('REPORT_PATH', 'report/report.html')
 REPORT_DIR = os.path.dirname(REPORT_PATH)
 REPORT_BASENAME = 'test_result_report'
-
-# Optional: Jenkins workspace URL (for download link)
-WORKSPACE_URL = os.environ.get('WORKSPACE_URL', '')
-
+WORKSPACE_URL = os.environ.get('WORKSPACE_URL', '')  # Optional Jenkins workspace URL
 VERSION_FILE = os.path.join(REPORT_DIR, "version.txt")
 
 # ----------------------------
-# Version tracking helper
+# Version tracker
 # ----------------------------
-
 def get_next_version():
-    """Read, increment, and save the shared report version."""
+    """Read, increment, and persist shared report version."""
     os.makedirs(REPORT_DIR, exist_ok=True)
     version = 1
     if os.path.exists(VERSION_FILE):
@@ -39,61 +34,51 @@ def get_next_version():
         f.write(str(version))
     return version
 
-def get_next_report_filename(report_dir, base_name, version_number):
-    """Return report path for the given version."""
-    return os.path.join(report_dir, f"{base_name}_v{version_number}.html")
-
 # ----------------------------
 # Email sender
 # ----------------------------
 def send_email():
-    # Determine next report version
     version_number = get_next_version()
-    new_report_path = get_next_report_filename(REPORT_DIR, REPORT_BASENAME, version_number)
+    new_report_path = os.path.join(REPORT_DIR, f"{REPORT_BASENAME}_v{version_number}.html")
 
-    # Check that the base report exists
-    base_report_path = os.environ.get('REPORT_PATH', 'report/report.html')
-    if not os.path.exists(base_report_path):
-        raise SystemExit(f"❌ Report not found: {base_report_path}")
+    if not os.path.exists(REPORT_PATH):
+        raise SystemExit(f"❌ Report not found: {REPORT_PATH}")
 
-    # Copy the base report into the new incremental file
-    with open(base_report_path, 'rb') as src, open(new_report_path, 'wb') as dest:
+    # Copy report to incremental version
+    with open(REPORT_PATH, 'rb') as src, open(new_report_path, 'wb') as dest:
         report_bytes = src.read()
         dest.write(report_bytes)
 
-    print(f"📄 New incremental report generated: {new_report_path}")
+    print(f"📄 Created new report: {new_report_path} (v{version_number})")
 
-    # Prepare Email
+    # Email setup
     msg = EmailMessage()
-    msg['Subject'] = f"Test Result Report (v{version_number})"
+    msg['Subject'] = f"CI Test Report (v{version_number})"
     msg['From'] = FROM_EMAIL
     msg['To'] = TO_EMAIL
 
-    # Build HTML body
     file_name = os.path.basename(new_report_path)
     download_link = ""
-
     if WORKSPACE_URL:
-        encoded_file = quote(file_name)
-        download_link = f"<p><b>Download full HTML report:</b> <a href='{WORKSPACE_URL}/{encoded_file}'>Click here (v{version_number})</a></p><hr>"
+        encoded = quote(file_name)
+        download_link = f"<p><b>Download full HTML report:</b> <a href='{WORKSPACE_URL}/{encoded}'>Click here (v{version_number})</a></p><hr>"
 
     html_body = f"""
     <html>
     <body>
-        <h2>Test Result Report (v{version_number})</h2>
+        <h2>CI Test Report (v{version_number})</h2>
         {download_link}
-        <p>The detailed HTML test report is attached and also viewable inline below.</p>
+        <p>The detailed HTML test report is attached and viewable inline below.</p>
         <hr>
         {report_bytes.decode('utf-8')}
     </body>
     </html>
     """
 
-    msg.set_content(f"Please find attached Test Result Report (v{version_number}).")
+    msg.set_content(f"Please find attached CI Test Report (v{version_number}).")
     msg.add_alternative(html_body, subtype='html')
     msg.add_attachment(report_bytes, maintype='text', subtype='html', filename=file_name)
 
-    # Send Email
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
         if SMTP_PORT == 587:
@@ -102,13 +87,10 @@ def send_email():
             try:
                 s.login(SMTP_USER, SMTP_PASS)
             except smtplib.SMTPNotSupportedError:
-                print("⚠️ SMTP AUTH not supported by this server — continuing without login.")
+                print("⚠️ SMTP AUTH not supported — continuing without login.")
         s.send_message(msg)
 
-    print(f"✅ Email sent successfully with report version v{version_number} attached.")
+    print(f"✅ Email sent successfully with report version v{version_number}")
 
-# ----------------------------
-# Entry Point
-# ----------------------------
 if __name__ == '__main__':
     send_email()
