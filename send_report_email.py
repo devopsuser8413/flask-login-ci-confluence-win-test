@@ -18,26 +18,45 @@ REPORT_DIR = os.path.dirname(REPORT_PATH)
 REPORT_BASENAME = 'test_result_report'
 
 # Optional: Jenkins workspace URL (for download link)
-WORKSPACE_URL = os.environ.get('WORKSPACE_URL', '')  # e.g. "http://jenkins-server/job/Test-Pipeline/ws/report"
+WORKSPACE_URL = os.environ.get('WORKSPACE_URL', '')
+
+VERSION_FILE = os.path.join(REPORT_DIR, "version.txt")
 
 # ----------------------------
-# Incremental report naming
+# Version tracking helper
 # ----------------------------
-def get_next_report_filename(report_dir, base_name):
-    """Find next incremental filename like test_result_report_v1.html."""
-    os.makedirs(report_dir, exist_ok=True)
-    pattern = re.compile(rf"{re.escape(base_name)}_v(\d+)\.html$")
-    existing_files = [f for f in os.listdir(report_dir) if pattern.match(f)]
+def get_next_version():
+    """Return the next report version based on version.txt tracker."""
+    os.makedirs(REPORT_DIR, exist_ok=True)
     
-    next_version = max([int(pattern.match(f).group(1)) for f in existing_files], default=0) + 1
-    return os.path.join(report_dir, f"{base_name}_v{next_version}.html"), next_version
+    # Default version
+    version = 1
+
+    # Read last version if file exists
+    if os.path.exists(VERSION_FILE):
+        with open(VERSION_FILE, "r") as f:
+            content = f.read().strip()
+            if content.isdigit():
+                version = int(content) + 1
+
+    # Write updated version
+    with open(VERSION_FILE, "w") as f:
+        f.write(str(version))
+
+    return version
+
+
+def get_next_report_filename(report_dir, base_name, version_number):
+    """Return report path for the given version."""
+    return os.path.join(report_dir, f"{base_name}_v{version_number}.html")
 
 # ----------------------------
 # Email sender
 # ----------------------------
 def send_email():
-    # Determine next incremental report file name
-    new_report_path, version_number = get_next_report_filename(REPORT_DIR, REPORT_BASENAME)
+    # Determine next report version
+    version_number = get_next_version()
+    new_report_path = get_next_report_filename(REPORT_DIR, REPORT_BASENAME, version_number)
 
     # Check that the base report exists
     base_report_path = os.environ.get('REPORT_PATH', 'report/report.html')
@@ -51,11 +70,9 @@ def send_email():
 
     print(f"📄 New incremental report generated: {new_report_path}")
 
-    # ----------------------------
     # Prepare Email
-    # ----------------------------
     msg = EmailMessage()
-    msg['Subject'] = f"CI Test Report (v{version_number})"
+    msg['Subject'] = f"Test Result Report (v{version_number})"
     msg['From'] = FROM_EMAIL
     msg['To'] = TO_EMAIL
 
@@ -63,7 +80,6 @@ def send_email():
     file_name = os.path.basename(new_report_path)
     download_link = ""
 
-    # Optional link if Jenkins WORKSPACE_URL is provided
     if WORKSPACE_URL:
         encoded_file = quote(file_name)
         download_link = f"<p><b>Download full HTML report:</b> <a href='{WORKSPACE_URL}/{encoded_file}'>Click here (v{version_number})</a></p><hr>"
@@ -71,7 +87,7 @@ def send_email():
     html_body = f"""
     <html>
     <body>
-        <h2>CI Test Report (v{version_number})</h2>
+        <h2>Test Result Report (v{version_number})</h2>
         {download_link}
         <p>The detailed HTML test report is attached and also viewable inline below.</p>
         <hr>
@@ -80,16 +96,11 @@ def send_email():
     </html>
     """
 
-    # Add text and HTML alternatives
-    msg.set_content(f"Please find attached CI test report (v{version_number}).")
+    msg.set_content(f"Please find attached Test Result Report (v{version_number}).")
     msg.add_alternative(html_body, subtype='html')
-
-    # Attach report file
     msg.add_attachment(report_bytes, maintype='text', subtype='html', filename=file_name)
 
-    # ----------------------------
     # Send Email
-    # ----------------------------
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
         if SMTP_PORT == 587:
@@ -101,7 +112,7 @@ def send_email():
                 print("⚠️ SMTP AUTH not supported by this server — continuing without login.")
         s.send_message(msg)
 
-    print(f"✅ Email sent successfully with downloadable report: {file_name}")
+    print(f"✅ Email sent successfully with report version v{version_number} attached.")
 
 # ----------------------------
 # Entry Point

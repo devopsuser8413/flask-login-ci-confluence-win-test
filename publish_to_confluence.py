@@ -13,6 +13,7 @@ CONFLUENCE_TOKEN = os.getenv('CONFLUENCE_TOKEN')
 CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')
 CONFLUENCE_TITLE = os.getenv('CONFLUENCE_TITLE')
 REPORT_PATH = os.getenv('REPORT_PATH')
+CREATE_NEW_PAGE_PER_VERSION = os.getenv('CREATE_NEW_PAGE_PER_VERSION', 'false').lower() == 'true'
 
 auth = HTTPBasicAuth(CONFLUENCE_USER, CONFLUENCE_TOKEN)
 headers = {"Content-Type": "application/json"}
@@ -25,7 +26,6 @@ def get_next_report_filename(report_dir, base_name):
     os.makedirs(report_dir, exist_ok=True)
     pattern = re.compile(rf"{re.escape(base_name)}_v(\d+)\.html$")
     existing_files = [f for f in os.listdir(report_dir) if pattern.match(f)]
-
     next_version = max([int(pattern.match(f).group(1)) for f in existing_files], default=0) + 1
     return os.path.join(report_dir, f"{base_name}_v{next_version}.html"), next_version
 
@@ -74,12 +74,7 @@ def create_page(title, space, content):
         "space": {"key": space},
         "body": {"storage": {"value": content, "representation": "storage"}}
     }
-
     r = requests.post(url, headers=headers, json=payload, auth=auth)
-    if r.status_code == 403:
-        print(f"❌ Forbidden: Cannot create page in '{space}'. Check permissions.")
-        sys.exit(1)
-
     r.raise_for_status()
     print(f"✅ Page '{title}' created successfully in space '{space}'.")
     return r.json()
@@ -95,41 +90,21 @@ def update_page(page_id, title, version, content):
         "version": {"number": version + 1},
         "body": {"storage": {"value": content, "representation": "storage"}}
     }
-
     r = requests.put(url, headers=headers, json=payload, auth=auth)
-    if r.status_code == 403:
-        print(f"❌ Forbidden: Cannot update page '{title}'. Check permissions.")
-        sys.exit(1)
-
     r.raise_for_status()
     print(f"✅ Page '{title}' updated successfully.")
     return r.json()
 
 
 def upload_attachment(page_id, file_path):
-    """Upload or replace the HTML report as a Confluence attachment"""
+    """Always upload as a new unique attachment (no overwrite)"""
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
     file_name = os.path.basename(file_path)
-
-    # Check if attachment already exists
-    existing_url = f"{url}?filename={file_name}"
-    r = requests.get(existing_url, auth=auth)
-    replace = False
-    if r.status_code == 200 and r.json().get('results'):
-        # Replace existing attachment
-        att_id = r.json()['results'][0]['id']
-        upload_url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment/{att_id}/data"
-        replace = True
-    else:
-        upload_url = url
-
     with open(file_path, 'rb') as f:
         files = {'file': (file_name, f, 'text/html')}
         headers_no_json = {"X-Atlassian-Token": "no-check"}
-        method = requests.put if replace else requests.post
-        res = method(upload_url, headers=headers_no_json, files=files, auth=auth)
+        res = requests.post(url, headers=headers_no_json, files=files, auth=auth)
         res.raise_for_status()
-
     print(f"📎 Uploaded report as attachment: {file_name}")
     return file_name
 
@@ -139,7 +114,6 @@ def read_report(file_path):
     if not os.path.exists(file_path):
         print(f"❌ Report file '{file_path}' not found.")
         sys.exit(1)
-
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -154,32 +128,41 @@ def main():
     # Step 2: Read HTML content
     report_content = read_report(new_report_path)
 
-    # Step 3: Add download link HTML
+    # Step 3: Prepare combined content
+    file_name = os.path.basename(new_report_path)
+    page_title = f"{CONFLUENCE_TITLE} v{version_number}" if CREATE_NEW_PAGE_PER_VERSION else CONFLUENCE_TITLE
+
+    # Step 4: Get or create page
+    page = get_page(page_title, CONFLUENCE_SPACE)
+    download_url = f"{CONFLUENCE_BASE}/download/attachments/{{page_id_placeholder}}/{file_name}"
+
+    if page:
+        page_id = page["id"]
+        print(f"📄 Page '{page_title}' exists. Updating...")
+        updated_page = update_page(page_id, page_title, page["version"]["number"], report_content)
+    else:
+        print(f"📄 Page '{page_title}' does not exist. Creating...")
+        created_page = create_page(page_title, CONFLUENCE_SPACE, report_content)
+        page_id = created_page["id"]
+
+    # Step 5: Upload as new attachment (unique filename per version)
+    upload_attachment(page_id, new_report_path)
+
+    # Step 6: Update page again to add correct download link
     download_html = f"""
-    <p><b>Download full HTML report:</b> 
-    <a href='/download/attachments/{{page.id}}/{os.path.basename(new_report_path)}' 
-    data-linked-resource-type='attachment'>Click here to download (v{version_number})</a></p>
+    <p><b>Download full HTML report (v{version_number}):</b>
+    <a href="{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}" target="_blank">Click here</a></p>
     <hr>
     """
 
     combined_html = download_html + report_content
+    update_page(page_id, page_title, get_page(page_title, CONFLUENCE_SPACE)["version"]["number"], combined_html)
 
-    # Step 4: Check page existence
-    page = get_page(CONFLUENCE_TITLE, CONFLUENCE_SPACE)
-
-    if page:
-        print(f"📄 Page '{CONFLUENCE_TITLE}' exists. Updating...")
-        updated_page = update_page(page['id'], CONFLUENCE_TITLE, page['version']['number'], combined_html)
-        upload_attachment(page['id'], new_report_path)
-    else:
-        print(f"📄 Page '{CONFLUENCE_TITLE}' does not exist. Creating...")
-        new_page = create_page(CONFLUENCE_TITLE, CONFLUENCE_SPACE, combined_html)
-        upload_attachment(new_page['id'], new_report_path)
-
-    print(f"✅ Report v{version_number} published to Confluence successfully.")
+    print(f"✅ Report v{version_number} published successfully on page '{page_title}'.")
+    print(f"📎 Download URL: {CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}")
 
 # ----------------------------
-# Entry point
+# Entry Point
 # ----------------------------
 if __name__ == "__main__":
     try:
