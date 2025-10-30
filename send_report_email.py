@@ -21,7 +21,7 @@ BASE_NAME = 'test_result_report'
 # Helpers
 # ----------------------------
 def read_version():
-    """Read the latest version number."""
+    """Read the latest report version number."""
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE) as f:
             return int(f.read().strip())
@@ -29,7 +29,7 @@ def read_version():
 
 
 # ----------------------------
-# Main Function
+# Main Logic
 # ----------------------------
 def send_email():
     version = read_version()
@@ -38,31 +38,37 @@ def send_email():
     if not os.path.exists(pdf_report_path):
         raise SystemExit(f"❌ PDF report not found: {pdf_report_path}")
 
-    # Read the PDF bytes
+    # Read the PDF file as bytes
     with open(pdf_report_path, 'rb') as f:
         pdf_bytes = f.read()
 
-    # Build the email
+    # Create email message
     msg = EmailMessage()
     msg['Subject'] = f"📊 Test Result Report (v{version})"
     msg['From'] = FROM_EMAIL
     msg['To'] = TO_EMAIL
 
     msg.set_content(
-        f"Hi,\n\nPlease find attached the latest Test Result Report (v{version}) in PDF format.\n\nRegards,\nAutomated QA System"
+        f"""Hi,
+
+Please find attached the latest Test Result Report (v{version}) in PDF format.
+
+Regards,
+Automated QA System
+"""
     )
 
     msg.add_alternative(f"""
         <html>
-        <body>
-            <h2>✅ Test Result Report (v{version})</h2>
-            <p>The latest test result report (v{version}) is attached below in PDF format.</p>
-            <p>Regards,<br><b>Automated QA System</b></p>
-        </body>
+            <body>
+                <h2>✅ Test Result Report (v{version})</h2>
+                <p>The latest test result report is attached below in PDF format.</p>
+                <p>Regards,<br><b>Automated QA System</b></p>
+            </body>
         </html>
     """, subtype='html')
 
-    # Attach the PDF file
+    # Attach PDF file
     msg.add_attachment(
         pdf_bytes,
         maintype='application',
@@ -70,8 +76,9 @@ def send_email():
         filename=f"{BASE_NAME}_v{version}.pdf"
     )
 
-    # Send the email via SMTP
+    # Send the email
     print(f"📤 Sending email to {TO_EMAIL} via {SMTP_HOST}:{SMTP_PORT} ...")
+
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
         if SMTP_PORT == 587:
@@ -89,3 +96,6 @@ def send_email():
 if __name__ == '__main__':
     try:
         send_email()
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        raise
