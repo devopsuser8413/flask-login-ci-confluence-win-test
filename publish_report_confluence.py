@@ -59,7 +59,6 @@ def extract_test_summary():
     total = passed + failed + errors + skipped
     rate = (passed / total * 100) if total else 0
 
-    # Determine status
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
     emoji = "✅" if status == "PASS" else "❌"
     summary = f"{emoji} {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
@@ -111,36 +110,83 @@ def construct_download_link(page_id, file_name):
     return f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}?api=v2"
 
 
+# ----------------------------
+# Enhanced Email Notification
+# ----------------------------
 def send_email_notification(version, summary, status, pdf_link, html_link, pdf_path, html_path):
-    """Send summary email and attach both reports."""
+    """Send summary email and attach both reports (clearly showing FAIL/PASS overview)."""
     msg = EmailMessage()
     emoji = "✅" if status == "PASS" else "❌"
+    color = "green" if status == "PASS" else "red"
+
     msg["Subject"] = f"{emoji} Test Result {status} (v{version}) - Confluence Report"
     msg["From"] = EMAIL_FROM
     msg["To"] = EMAIL_TO
 
-    msg.set_content(f"""
-Test run completed with status: {status}
-Summary: {summary}
+    # Extract numeric summary details
+    import re
+    passed = failed = errors = skipped = 0
+    match = re.findall(r"(\d+)\s+(passed|failed|error|skipped)", summary)
+    for count, label in match:
+        count = int(count)
+        if "pass" in label: passed = count
+        elif "fail" in label: failed = count
+        elif "error" in label: errors = count
+        elif "skip" in label: skipped = count
 
-View reports:
+    msg.set_content(f"""
+Test Execution Report (v{version})
+-----------------------------------
+Status  : {status}
+Summary : {summary}
+
+View Reports:
 HTML: {html_link}
 PDF : {pdf_link}
+
+This is an automated Jenkins notification.
 """)
 
     msg.add_alternative(f"""
-    <html><body>
-        <h2>{emoji} Test Result: <span style="color:{'green' if status=='PASS' else 'red'}">{status}</span> (v{version})</h2>
+    <html>
+    <body style="font-family:Arial, sans-serif; color:#222;">
+        <h2>{emoji} Test Result:
+            <span style="color:{color}; font-weight:bold;">{status}</span> (v{version})
+        </h2>
         <p><b>Summary:</b> {summary}</p>
+
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-top:10px;">
+            <tr style="background-color:#f2f2f2; text-align:center;">
+                <th>✅ Passed</th>
+                <th>❌ Failed</th>
+                <th>⚠️ Errors</th>
+                <th>⏭ Skipped</th>
+                <th>Pass Rate</th>
+            </tr>
+            <tr style="text-align:center;">
+                <td style="color:green;">{passed}</td>
+                <td style="color:red;">{failed}</td>
+                <td style="color:orange;">{errors}</td>
+                <td>{skipped}</td>
+                <td><b>{round((passed/(passed+failed+errors+skipped)*100) if (passed+failed+errors+skipped) else 0,1)}%</b></td>
+            </tr>
+        </table>
+
+        <h3 style="margin-top:20px;">📎 View or Download Reports</h3>
         <ul>
           <li><a href="{html_link}" target="_blank">View HTML Report</a></li>
           <li><a href="{pdf_link}" target="_blank">Download PDF Report</a></li>
         </ul>
-        <p>This is an automated Jenkins notification.</p>
-    </body></html>
+
+        <p style="margin-top:20px; font-size:0.9em; color:#777;">
+            This is an automated Jenkins notification.<br>
+            Generated on {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
+        </p>
+    </body>
+    </html>
     """, subtype="html")
 
-    # Attach reports
+    # Attach both reports
     for path in (pdf_path, html_path):
         if os.path.exists(path):
             with open(path, "rb") as f:
@@ -150,7 +196,6 @@ PDF : {pdf_link}
                                    subtype=subtype,
                                    filename=os.path.basename(path))
 
-    # Send email
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
             s.ehlo()
@@ -219,7 +264,6 @@ def main():
     print(f"🔗 PDF: {pdf_link}")
     print(f"🔗 HTML: {html_link}")
 
-    # Always send email — both for PASS and FAIL
     send_email_notification(version, summary, status, pdf_link, html_link, pdf_path, html_path)
 
 
