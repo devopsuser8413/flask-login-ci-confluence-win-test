@@ -40,7 +40,7 @@ pipeline {
     stages {
 
         // -------------------------------
-        stage('Encoding Setup') {
+        stage('Setup Encoding') {
             steps {
                 echo '🔧 Setting system encoding to UTF-8...'
                 bat '''
@@ -132,14 +132,14 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Enhance Report') {
+        stage('Generate Report') {
             steps {
                 echo '🎨 Enhancing report: adding summary chart and generating PDF...'
                 bat """
                     @echo off
                     chcp 65001 >nul
                     set PYTHONUTF8=1
-                    %VENV_PATH%\\Scripts\\python.exe enhance_report.py
+                    %VENV_PATH%\\Scripts\\python.exe generate_report.py
                 """
                 echo '✅ Enhanced HTML and PDF reports generated successfully.'
             }
@@ -154,7 +154,7 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Email Test-Report') {
+        stage('Email Report') {
             steps {
                 echo '📧 Sending latest test report as PDF attachment via email...'
                 bat """
@@ -167,13 +167,13 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Publish Confluence & Notify Email Test-Report') {
+        stage('Publish Report Confluence & Notify Email') {
             steps {
                 echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
                 bat """
                     @echo off
                     chcp 65001 >nul
-                    %VENV_PATH%\\Scripts\\python.exe publish_new_page_notify_email.py
+                    %VENV_PATH%\\Scripts\\python.exe publish_report_confluence.py
                 """
                 echo '✅ Report (HTML & PDF) successfully published to Confluence.'
             }
