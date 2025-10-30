@@ -76,8 +76,8 @@ pipeline {
                     echo Installing required modules from requirements.txt...
                     %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
 
-                    echo Installing additional visualization libraries...
-                    %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib
+                    echo Installing additional visualization and report libraries...
+                    %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
                 """
                 echo '✅ All dependencies installed successfully.'
             }
@@ -105,20 +105,21 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Enhance Report (Graphical Summary)') {
+        stage('Enhance Report (HTML + PDF)') {
             steps {
-                echo '🎨 Enhancing HTML report with charts and color-coded summary...'
+                echo '🎨 Enhancing report: adding summary chart and generating PDF...'
                 bat """
                     @echo off
                     set PYTHONUTF8=1
                     %VENV_PATH%\\Scripts\\python.exe enhance_report.py
                 """
-                echo '✅ Enhanced report generated successfully.'
+                echo '✅ Enhanced HTML and PDF reports generated successfully.'
             }
             post {
                 always {
-                    echo '📦 Archiving enhanced HTML report and version file...'
+                    echo '📦 Archiving enhanced reports and version file...'
                     archiveArtifacts artifacts: 'report/test_result_report_v*.html', fingerprint: true
+                    archiveArtifacts artifacts: 'report/test_result_report_v*.pdf', fingerprint: true
                     archiveArtifacts artifacts: 'report/version.txt', fingerprint: true
                 }
             }
@@ -127,7 +128,7 @@ pipeline {
         // -------------------------------
         stage('Verify Confluence API Token') {
             steps {
-                echo '🔑 Verifying access to Confluence API before publishing...'
+                echo '🔑 Verifying Confluence API connectivity...'
                 bat """
                     @echo off
                     set PYTHONUTF8=1
@@ -138,28 +139,28 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Send Email Report') {
+        stage('Send Email Report (PDF)') {
             steps {
-                echo '📧 Preparing to send enhanced HTML report via email...'
+                echo '📧 Sending latest test report as PDF attachment via email...'
                 bat """
                     @echo off
                     set PYTHONUTF8=1
                     %VENV_PATH%\\Scripts\\python.exe send_report_email.py
                 """
-                echo '✅ Email with enhanced report sent successfully.'
+                echo '✅ Email with PDF report sent successfully.'
             }
         }
 
         // -------------------------------
-        stage('Publish to Confluence') {
+        stage('Publish to Confluence (HTML + PDF)') {
             steps {
-                echo '🌐 Publishing enhanced HTML report to Confluence...'
+                echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
                 bat """
                     @echo off
                     set PYTHONUTF8=1
                     %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
                 """
-                echo '✅ Report successfully published to Confluence space.'
+                echo '✅ Report (HTML & PDF) successfully published to Confluence.'
             }
         }
     }
@@ -171,9 +172,9 @@ pipeline {
             ✅ PIPELINE COMPLETED SUCCESSFULLY!
             =================================
             - All stages executed cleanly.
-            - HTML reports archived and versioned.
-            - Email successfully sent.
-            - Report published to Confluence.
+            - HTML & PDF reports archived and versioned.
+            - Email with PDF sent successfully.
+            - Reports published to Confluence.
             =================================
             '''
         }
@@ -181,9 +182,9 @@ pipeline {
             echo '''
             ❌ PIPELINE FAILED!
             =================================
-            - Check Jenkins logs for exact stage failure.
-            - Verify report path and Confluence/SMTP credentials.
-            - Ensure network access to Confluence and SMTP host.
+            - Check Jenkins logs for failed stage.
+            - Verify SMTP and Confluence credentials.
+            - Ensure report files exist and network access is available.
             =================================
             '''
         }

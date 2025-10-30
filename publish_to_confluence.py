@@ -11,6 +11,7 @@ CONFLUENCE_USER = os.getenv('CONFLUENCE_USER')
 CONFLUENCE_TOKEN = os.getenv('CONFLUENCE_TOKEN')
 CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')
 CONFLUENCE_TITLE = os.getenv('CONFLUENCE_TITLE')
+
 REPORT_DIR = 'report'
 VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
 BASE_NAME = 'test_result_report'
@@ -22,10 +23,12 @@ headers = {"Content-Type": "application/json"}
 # Helpers
 # ----------------------------
 def read_version():
+    """Read current version number."""
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE) as f:
             return int(f.read().strip())
     return 1
+
 
 def get_page(title, space):
     """Get Confluence page details if it exists."""
@@ -35,6 +38,7 @@ def get_page(title, space):
     r.raise_for_status()
     results = r.json().get('results', [])
     return results[0] if results else None
+
 
 def update_page(page_id, title, version, content):
     """Update Confluence page content."""
@@ -50,13 +54,15 @@ def update_page(page_id, title, version, content):
     r.raise_for_status()
     print(f"✅ Page '{title}' updated successfully (version {version + 1}).")
 
+
 def upload_attachment(page_id, file_path):
-    """Upload HTML report as attachment under unique name."""
+    """Upload a report (HTML or PDF) as a unique attachment."""
     file_name = os.path.basename(file_path)
     upload_url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
 
     with open(file_path, 'rb') as f:
-        files = {'file': (file_name, f, 'text/html')}
+        mime_type = 'application/pdf' if file_name.endswith('.pdf') else 'text/html'
+        files = {'file': (file_name, f, mime_type)}
         headers_no_json = {"X-Atlassian-Token": "no-check"}
         res = requests.post(upload_url, headers=headers_no_json, files=files, auth=auth)
 
@@ -66,24 +72,36 @@ def upload_attachment(page_id, file_path):
 
     data = res.json()
     attachment_id = data['results'][0]['id']
-    print(f"📎 Uploaded attachment '{file_name}' (id: {attachment_id})")
+    print(f"📎 Uploaded '{file_name}' (attachment id: {attachment_id})")
     return file_name
+
+
+def construct_download_link(page_id, file_name):
+    """Generate Confluence download link for the attachment."""
+    return f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}?api=v2"
+
 
 # ----------------------------
 # Main Logic
 # ----------------------------
 def main():
     version = read_version()
-    report_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.html")
 
-    if not os.path.exists(report_path):
-        print(f"❌ Report file not found: {report_path}")
+    html_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.html")
+    pdf_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.pdf")
+
+    if not os.path.exists(html_path):
+        print(f"❌ Report HTML file not found: {html_path}")
+        sys.exit(1)
+    if not os.path.exists(pdf_path):
+        print(f"❌ Report PDF file not found: {pdf_path}")
         sys.exit(1)
 
-    with open(report_path, 'r', encoding='utf-8') as f:
+    # Read HTML for embedding
+    with open(html_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
 
-    # Check or create page
+    # Check Confluence page
     page = get_page(CONFLUENCE_TITLE, CONFLUENCE_SPACE)
     if not page:
         print(f"❌ Page '{CONFLUENCE_TITLE}' not found in space '{CONFLUENCE_SPACE}'. Please create it first.")
@@ -92,27 +110,39 @@ def main():
     page_id = page['id']
     page_version = page['version']['number']
 
-    # Upload attachment first
-    file_name = upload_attachment(page_id, report_path)
+    # Upload attachments
+    html_file_name = upload_attachment(page_id, html_path)
+    pdf_file_name = upload_attachment(page_id, pdf_path)
 
-    # Construct valid Confluence download URL
-    download_link = (
-        f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}?api=v2"
-    )
+    # Generate download links
+    html_link = construct_download_link(page_id, html_file_name)
+    pdf_link = construct_download_link(page_id, pdf_file_name)
 
-    # Create new HTML body
-    content = f"""
+    # Create a summary block with links
+    summary_block = f"""
     <h2>🚀 Test Result Report (v{version})</h2>
-    <p><b>Download Full Report:</b> 
-        <a href="{download_link}" target="_blank">Click here to download (v{version})</a>
+    <p>
+      📄 <b>Download Reports:</b><br>
+      • <a href="{html_link}" target="_blank">HTML Report v{version}</a><br>
+      • <a href="{pdf_link}" target="_blank">PDF Report v{version}</a>
     </p>
     <hr>
-    {html_content}
     """
 
-    # Update page
-    update_page(page_id, CONFLUENCE_TITLE, page_version, content)
-    print(f"✅ Report v{version} published successfully with attachment link: {download_link}")
+    # Preserve old content and append new summary at the top
+    old_content_url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}?expand=body.storage"
+    old_page = requests.get(old_content_url, headers=headers, auth=auth).json()
+    old_body = old_page.get("body", {}).get("storage", {}).get("value", "")
+
+    new_body = summary_block + old_body
+
+    # Update page with new content
+    update_page(page_id, CONFLUENCE_TITLE, page_version, new_body)
+
+    print(f"✅ Report v{version} published successfully with attachments:")
+    print(f"   → HTML: {html_link}")
+    print(f"   → PDF : {pdf_link}")
+
 
 # ----------------------------
 # Entry Point

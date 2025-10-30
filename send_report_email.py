@@ -2,49 +2,76 @@ import os
 import smtplib
 from email.message import EmailMessage
 
+# ----------------------------
+# Environment Variables
+# ----------------------------
 SMTP_HOST = os.getenv('SMTP_HOST')
-SMTP_PORT = int(os.getenv('SMTP_PORT'))
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_USER = os.getenv('SMTP_USER')
 SMTP_PASS = os.getenv('SMTP_PASS')
 TO_EMAIL = os.getenv('REPORT_TO')
 FROM_EMAIL = os.getenv('REPORT_FROM')
+
 REPORT_DIR = 'report'
 VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
 BASE_NAME = 'test_result_report'
 
+
+# ----------------------------
+# Helpers
+# ----------------------------
 def read_version():
+    """Read the latest version number."""
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE) as f:
             return int(f.read().strip())
     return 1
 
+
+# ----------------------------
+# Main Function
+# ----------------------------
 def send_email():
     version = read_version()
-    report_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.html")
+    pdf_report_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.pdf")
 
-    if not os.path.exists(report_path):
-        raise SystemExit(f"❌ Report not found: {report_path}")
+    if not os.path.exists(pdf_report_path):
+        raise SystemExit(f"❌ PDF report not found: {pdf_report_path}")
 
-    with open(report_path, 'rb') as f:
-        report_bytes = f.read()
+    # Read the PDF bytes
+    with open(pdf_report_path, 'rb') as f:
+        pdf_bytes = f.read()
 
+    # Build the email
     msg = EmailMessage()
-    msg['Subject'] = f"Test Result Report (v{version})"
+    msg['Subject'] = f"📊 Test Result Report (v{version})"
     msg['From'] = FROM_EMAIL
     msg['To'] = TO_EMAIL
 
-    msg.set_content(f"Please find attached Test Result Report (v{version}).")
+    msg.set_content(
+        f"Hi,\n\nPlease find attached the latest Test Result Report (v{version}) in PDF format.\n\nRegards,\nAutomated QA System"
+    )
+
     msg.add_alternative(f"""
-        <html><body>
-        <h2>✅ Test Result Report (v{version})</h2>
-        <p>See the attached enhanced HTML report.</p>
-        <hr>
-        {report_bytes.decode('utf-8')}
-        </body></html>
+        <html>
+        <body>
+            <h2>✅ Test Result Report (v{version})</h2>
+            <p>The latest test result report (v{version}) is attached below in PDF format.</p>
+            <p>Regards,<br><b>Automated QA System</b></p>
+        </body>
+        </html>
     """, subtype='html')
 
-    msg.add_attachment(report_bytes, maintype='text', subtype='html', filename=f"{BASE_NAME}_v{version}.html")
+    # Attach the PDF file
+    msg.add_attachment(
+        pdf_bytes,
+        maintype='application',
+        subtype='pdf',
+        filename=f"{BASE_NAME}_v{version}.pdf"
+    )
 
+    # Send the email via SMTP
+    print(f"📤 Sending email to {TO_EMAIL} via {SMTP_HOST}:{SMTP_PORT} ...")
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
         if SMTP_PORT == 587:
@@ -53,7 +80,12 @@ def send_email():
             s.login(SMTP_USER, SMTP_PASS)
         s.send_message(msg)
 
-    print(f"✅ Email sent successfully with version v{version}")
+    print(f"✅ Email sent successfully with PDF report v{version} attached.")
 
+
+# ----------------------------
+# Entry Point
+# ----------------------------
 if __name__ == '__main__':
-    send_email()
+    try:
+        send_email()
