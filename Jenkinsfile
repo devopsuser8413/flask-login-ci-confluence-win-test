@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     options {
-        timestamps() // show timestamps for each log line
+        timestamps()
     }
 
     environment {
@@ -28,6 +28,13 @@ pipeline {
         REPORT_DIR    = 'report'
         VERSION_FILE  = 'report/version.txt'
         VENV_PATH     = '.venv'
+
+        // ============================
+        // 🧩 UTF-8 + Python Encoding Fix
+        // ============================
+        PYTHONUTF8 = '1'
+        PYTHONIOENCODING = 'utf-8'
+        PYTHONLEGACYWINDOWSSTDIO = '1'
     }
 
     stages {
@@ -35,96 +42,86 @@ pipeline {
         // -------------------------------
         stage('Encoding Setup') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🔧 Setting system encoding to UTF-8...'
-                    bat '''
-                        @echo off
-                        chcp 65001 >nul
-                        set PYTHONUTF8=1
-                        echo ✅ Windows console now using UTF-8 (code page 65001)
-                    '''
-                }
+                echo '🔧 Setting system encoding to UTF-8...'
+                bat '''
+                    @echo off
+                    chcp 65001 >nul
+                    set PYTHONUTF8=1
+                    set PYTHONIOENCODING=utf-8
+                    set PYTHONLEGACYWINDOWSSTDIO=1
+                    echo ✅ Windows console now using UTF-8 (code page 65001)
+                '''
             }
         }
 
         // -------------------------------
         stage('Checkout from GitHub') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '📦 Checking out source code from GitHub repository...'
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: '*/main']],
-                        userRemoteConfigs: [[
-                            url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win-test.git',
-                            credentialsId: 'github-credentials'
-                        ]]
-                    ])
-                    echo '✅ Source code checkout complete.'
-                }
+                echo '📦 Checking out source code from GitHub repository...'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win-test.git',
+                        credentialsId: 'github-credentials'
+                    ]]
+                ])
+                echo '✅ Source code checkout complete.'
             }
         }
 
         // -------------------------------
         stage('Setup Python Environment') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🐍 Checking and creating Python virtual environment...'
-                    bat '''
-                        @echo off
-                        chcp 65001 >nul
-                        if not exist "%VENV_PATH%" (
-                            echo Creating new virtual environment...
-                            python -m venv %VENV_PATH%
-                        ) else (
-                            echo Virtual environment already exists.
-                        )
-                        echo Activating venv and checking versions...
-                        %VENV_PATH%\\Scripts\\python.exe --version
-                        %VENV_PATH%\\Scripts\\pip.exe --version
-                    '''
-                    echo '✅ Python environment ready.'
-                }
+                echo '🐍 Checking and creating Python virtual environment...'
+                bat '''
+                    @echo off
+                    chcp 65001 >nul
+                    if not exist "%VENV_PATH%" (
+                        echo Creating new virtual environment...
+                        python -m venv %VENV_PATH%
+                    ) else (
+                        echo Virtual environment already exists.
+                    )
+                    echo Checking Python and pip versions...
+                    %VENV_PATH%\\Scripts\\python.exe --version
+                    %VENV_PATH%\\Scripts\\pip.exe --version
+                '''
+                echo '✅ Python environment ready.'
             }
         }
 
         // -------------------------------
         stage('Install Dependencies') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '📦 Installing Python dependencies...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        echo Upgrading pip...
-                        %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
-
-                        echo Installing required modules from requirements.txt...
-                        %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
-
-                        echo Installing additional visualization and report libraries...
-                        %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
-                    """
-                    echo '✅ All dependencies installed successfully.'
-                }
+                echo '📦 Installing Python dependencies...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    echo Upgrading pip...
+                    %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
+                    echo Installing required modules from requirements.txt...
+                    %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
+                    echo Installing additional visualization and report libraries...
+                    %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
+                """
+                echo '✅ All dependencies installed successfully.'
             }
         }
 
         // -------------------------------
         stage('Run Tests') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🧪 Running unit tests and generating raw HTML report...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        if not exist "report" mkdir report
-                        echo Executing pytest...
-                        set PYTHONPATH=%CD%
-                        %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html || exit /b 0
-                    """
-                    echo '✅ Pytest completed and raw report generated.'
-                }
+                echo '🧪 Running unit tests and generating raw HTML report...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    if not exist "report" mkdir report
+                    echo Executing pytest...
+                    set PYTHONPATH=%CD%
+                    %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html || exit /b 0
+                """
+                echo '✅ Pytest completed and raw report generated.'
             }
             post {
                 always {
@@ -137,16 +134,14 @@ pipeline {
         // -------------------------------
         stage('Enhance Report (HTML + PDF)') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🎨 Enhancing report: adding summary chart and generating PDF...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        set PYTHONUTF8=1
-                        %VENV_PATH%\\Scripts\\python.exe enhance_report.py
-                    """
-                    echo '✅ Enhanced HTML and PDF reports generated successfully.'
-                }
+                echo '🎨 Enhancing report: adding summary chart and generating PDF...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    set PYTHONUTF8=1
+                    %VENV_PATH%\\Scripts\\python.exe enhance_report.py
+                """
+                echo '✅ Enhanced HTML and PDF reports generated successfully.'
             }
             post {
                 always {
@@ -161,45 +156,42 @@ pipeline {
         // -------------------------------
         stage('Verify Confluence API Token') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🔑 Verifying Confluence API connectivity...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        %VENV_PATH%\\Scripts\\python.exe check_api_token.py
-                    """
-                    echo '✅ Confluence API verification successful.'
-                }
+                echo '🔑 Verifying Confluence API connectivity...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    set PYTHONUTF8=1
+                    set PYTHONIOENCODING=utf-8
+                    set PYTHONLEGACYWINDOWSSTDIO=1
+                    %VENV_PATH%\\Scripts\\python.exe check_api_token.py
+                """
+                echo '✅ Confluence API verification successful.'
             }
         }
 
         // -------------------------------
         stage('Send Email Report (PDF)') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '📧 Sending latest test report as PDF attachment via email...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        %VENV_PATH%\\Scripts\\python.exe send_report_email.py
-                    """
-                    echo '✅ Email with PDF report sent successfully.'
-                }
+                echo '📧 Sending latest test report as PDF attachment via email...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    %VENV_PATH%\\Scripts\\python.exe send_report_email.py
+                """
+                echo '✅ Email with PDF report sent successfully.'
             }
         }
 
         // -------------------------------
         stage('Publish to Confluence (HTML + PDF)') {
             steps {
-                wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm']) {
-                    echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
-                    bat """
-                        @echo off
-                        chcp 65001 >nul
-                        %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
-                    """
-                    echo '✅ Report (HTML & PDF) successfully published to Confluence.'
-                }
+                echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
+                bat """
+                    @echo off
+                    chcp 65001 >nul
+                    %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
+                """
+                echo '✅ Report (HTML & PDF) successfully published to Confluence.'
             }
         }
     }

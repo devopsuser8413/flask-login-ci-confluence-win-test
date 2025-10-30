@@ -1,33 +1,25 @@
-import os
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+# Existing imports and code
 import requests
 from requests.auth import HTTPBasicAuth
-import sys
+import os
 
-# Load environment variables
-BASE = os.getenv("CONFLUENCE_BASE")
-USER = os.getenv("CONFLUENCE_USER")
-TOKEN = os.getenv("CONFLUENCE_TOKEN")
-SPACE = os.getenv("CONFLUENCE_SPACE")
+# --- keep your previous logic ---
+CONFLUENCE_BASE = os.getenv('CONFLUENCE_BASE')
+CONFLUENCE_USER = os.getenv('CONFLUENCE_USER')
+CONFLUENCE_TOKEN = os.getenv('CONFLUENCE_TOKEN')
+CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')
 
-auth = HTTPBasicAuth(USER, TOKEN)
-url = f"{BASE}/rest/api/space/{SPACE}"
+auth = HTTPBasicAuth(CONFLUENCE_USER, CONFLUENCE_TOKEN)
 
 try:
-    response = requests.get(url, auth=auth)
-    print("Status Code:", response.status_code)
-    
-    if response.status_code == 200:
-        print("✅ API token is valid and user has access to the space.")
-        sys.exit(0)
-    elif response.status_code == 403:
-        print("❌ Forbidden: User does not have permission to access this space.")
-        sys.exit(1)
-    elif response.status_code == 401:
-        print("❌ Unauthorized: Invalid API token or user email.")
-        sys.exit(1)
-    else:
-        print("❌ Unexpected error:", response.text)
-        sys.exit(1)
+    r = requests.get(f"{CONFLUENCE_BASE}/rest/api/space/{CONFLUENCE_SPACE}", auth=auth)
+    print(f"Status Code: {r.status_code}")
+    r.raise_for_status()
+    print("✅ API token is valid and user has access to the space.")
 except Exception as e:
-    print("❌ Error connecting to Confluence:", str(e))
+    print(f"❌ Error connecting to Confluence: {e}")
     sys.exit(1)
