@@ -55,7 +55,7 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Checkout from GitHub') {
+        stage('Checkout GitHub') {
             steps {
                 echo '📦 Checking out source code from GitHub repository...'
                 checkout([
@@ -71,7 +71,7 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Setup Python Environment') {
+        stage('Setup Python') {
             steps {
                 echo '🐍 Checking and creating Python virtual environment...'
                 bat '''
@@ -132,7 +132,7 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Enhance Report (HTML + PDF)') {
+        stage('Enhance Report') {
             steps {
                 echo '🎨 Enhancing report: adding summary chart and generating PDF...'
                 bat """
@@ -154,23 +154,7 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Verify Confluence API Token') {
-            steps {
-                echo '🔑 Verifying Confluence API connectivity...'
-                bat """
-                    @echo off
-                    chcp 65001 >nul
-                    set PYTHONUTF8=1
-                    set PYTHONIOENCODING=utf-8
-                    set PYTHONLEGACYWINDOWSSTDIO=1
-                    %VENV_PATH%\\Scripts\\python.exe check_api_token.py
-                """
-                echo '✅ Confluence API verification successful.'
-            }
-        }
-
-        // -------------------------------
-        stage('Send Email Report (PDF)') {
+        stage('Email Test-Report') {
             steps {
                 echo '📧 Sending latest test report as PDF attachment via email...'
                 bat """
@@ -183,13 +167,13 @@ pipeline {
         }
 
         // -------------------------------
-        stage('Publish to Confluence (HTML + PDF)') {
+        stage('Publish Confluence & Notify Email Test-Report') {
             steps {
                 echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
                 bat """
                     @echo off
                     chcp 65001 >nul
-                    %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
+                    %VENV_PATH%\\Scripts\\python.exe publish_new_page_notify_email.py
                 """
                 echo '✅ Report (HTML & PDF) successfully published to Confluence.'
             }
