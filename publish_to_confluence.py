@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import datetime
 import requests
 from requests.auth import HTTPBasicAuth
@@ -73,21 +74,31 @@ def create_confluence_page(title, html_body):
 
 
 def upload_attachment(page_id, file_path):
-    """Upload a file (PDF/HTML) as an attachment."""
+    """Upload a file (PDF/HTML) as an attachment with retry."""
     file_name = os.path.basename(file_path)
     mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
 
-    with open(file_path, "rb") as f:
-        files = {"file": (file_name, f, mime_type)}
-        res = requests.post(url, headers={"X-Atlassian-Token": "no-check"}, files=files, auth=auth)
+    # Retry upload in case Confluence hasn't fully committed the new page
+    for attempt in range(1, 4):
+        try:
+            with open(file_path, "rb") as f:
+                files = {"file": (file_name, f, mime_type)}
+                res = requests.post(url, files=files, auth=auth, headers={"X-Atlassian-Token": "no-check"})
 
-    if res.status_code not in (200, 201):
-        print(f"❌ Failed to upload attachment: {res.status_code} - {res.text}")
-        sys.exit(1)
+            if res.status_code in (200, 201):
+                data = res.json()
+                attachment_id = data["results"][0]["id"]
+                print(f"📎 Uploaded attachment '{file_name}' (id: {attachment_id})")
+                return file_name
+            else:
+                print(f"⚠️ Attempt {attempt}: Upload failed ({res.status_code}) - retrying...")
+                time.sleep(2)
+        except Exception as e:
+            print(f"⚠️ Attempt {attempt} error: {e}")
+            time.sleep(2)
 
-    print(f"📎 Uploaded attachment: {file_name}")
-    return file_name
+    sys.exit(f"❌ Failed to upload attachment '{file_name}' after 3 attempts.")
 
 
 def construct_download_link(page_id, file_name):
@@ -105,11 +116,11 @@ def main():
     if not os.path.exists(pdf_path):
         sys.exit(f"❌ PDF report not found: {pdf_path}")
 
-    # Gather summary + timestamp
+    # Summary and timestamp
     summary = extract_test_summary()
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Build page title and content
+    # Page title and HTML
     page_title = f"{CONFLUENCE_TITLE} v{version}"
     body = f"""
         <h2>🚀 {CONFLUENCE_TITLE} (v{version})</h2>
@@ -118,16 +129,33 @@ def main():
         <p>The full test result PDF report is attached below.</p>
     """
 
-    # Create new Confluence page
+    # Create page
     page_id = create_confluence_page(page_title, body)
 
-    # Upload PDF attachment
-    upload_attachment(page_id, pdf_path)
-    pdf_link = construct_download_link(page_id, os.path.basename(pdf_path))
+    # Upload PDF
+    print("📤 Uploading PDF attachment...")
+    pdf_name = upload_attachment(page_id, pdf_path)
 
-    # Append link for quick access
-    print(f"✅ Published report v{version} to Confluence:")
-    print(f"   🔗 {pdf_link}")
+    # Confirm attachment link
+    pdf_link = construct_download_link(page_id, pdf_name)
+
+    # Update page to include link
+    updated_body = body + f"""
+        <p><b>📎 Download:</b> <a href="{pdf_link}" target="_blank">{pdf_name}</a></p>
+    """
+    update_url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}"
+    update_payload = {
+        "id": page_id,
+        "type": "page",
+        "title": page_title,
+        "version": {"number": 2},
+        "body": {"storage": {"value": updated_body, "representation": "storage"}}
+    }
+    res = requests.put(update_url, headers=headers, json=update_payload, auth=auth)
+    res.raise_for_status()
+
+    print(f"✅ Successfully published v{version} to Confluence with PDF attached.")
+    print(f"🔗 {pdf_link}")
 
 
 # ----------------------------
