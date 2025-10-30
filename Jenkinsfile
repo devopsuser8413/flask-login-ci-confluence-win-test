@@ -119,6 +119,7 @@ pipeline {
                     if not exist "report" mkdir report
                     echo Executing pytest...
                     set PYTHONPATH=%CD%
+                    set FORCE_FAIL=true
                     %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html || exit /b 0
                 """
                 echo '✅ Pytest completed and raw report generated.'
