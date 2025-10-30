@@ -42,7 +42,7 @@ def read_version():
 
 
 def extract_test_summary():
-    """Extract pass/fail summary from pytest_output.txt if present."""
+    """Extract pass/fail summary from pytest_output.txt with robust detection."""
     pytest_output = os.path.join(REPORT_DIR, "pytest_output.txt")
     if not os.path.exists(pytest_output):
         return "No test summary available.", "UNKNOWN"
@@ -52,16 +52,31 @@ def extract_test_summary():
 
     import re
     passed = failed = errors = skipped = 0
-    if m := re.search(r"(\d+)\s+passed", text): passed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+failed", text): failed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+error",  text): errors = int(m.group(1))
-    if m := re.search(r"(\d+)\s+skipped", text): skipped = int(m.group(1))
+
+    # Match case-insensitive to handle "FAILED", "errors", etc.
+    if m := re.search(r"(\d+)\s+passed", text, re.IGNORECASE): 
+        passed = int(m.group(1))
+    if m := re.search(r"(\d+)\s+failed", text, re.IGNORECASE): 
+        failed = int(m.group(1))
+    if m := re.search(r"(\d+)\s+errors?", text, re.IGNORECASE): 
+        errors = int(m.group(1))
+    if m := re.search(r"(\d+)\s+skipped", text, re.IGNORECASE): 
+        skipped = int(m.group(1))
+
+    # Fallback detection (handles short summary lines like "FAILED tests/test_app.py")
+    if "FAILED" in text.upper() and failed == 0:
+        failed = 1
+
     total = passed + failed + errors + skipped
     rate = (passed / total * 100) if total else 0
 
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
     emoji = "✅" if status == "PASS" else "❌"
-    summary = f"{emoji} {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
+    summary = (
+        f"{emoji} {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors, "
+        f"⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
+    )
+
     return summary, status
 
 
