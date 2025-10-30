@@ -59,12 +59,15 @@ def extract_test_summary():
     total = passed + failed + errors + skipped
     rate = (passed / total * 100) if total else 0
 
+    # Determine status
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
-    summary = f"✅ {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
+    emoji = "✅" if status == "PASS" else "❌"
+    summary = f"{emoji} {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
     return summary, status
 
 
 def create_confluence_page(title, html_body):
+    """Create a new Confluence page."""
     url = f"{CONFLUENCE_BASE}/rest/api/content"
     payload = {
         "type": "page",
@@ -81,6 +84,7 @@ def create_confluence_page(title, html_body):
 
 
 def upload_attachment(page_id, file_path):
+    """Upload a file (PDF/HTML) to Confluence page."""
     file_name = os.path.basename(file_path)
     mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
@@ -137,16 +141,16 @@ PDF : {pdf_link}
     """, subtype="html")
 
     # Attach reports
-    try:
-        with open(pdf_path, "rb") as f:
-            msg.add_attachment(f.read(), maintype="application", subtype="pdf",
-                               filename=os.path.basename(pdf_path))
-        with open(html_path, "rb") as f:
-            msg.add_attachment(f.read(), maintype="text", subtype="html",
-                               filename=os.path.basename(html_path))
-    except Exception as e:
-        print(f"⚠️ Could not attach files: {e}")
+    for path in (pdf_path, html_path):
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                subtype = "pdf" if path.endswith(".pdf") else "html"
+                msg.add_attachment(f.read(),
+                                   maintype="application" if subtype == "pdf" else "text",
+                                   subtype=subtype,
+                                   filename=os.path.basename(path))
 
+    # Send email
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
             s.ehlo()
@@ -174,11 +178,14 @@ def main():
     summary, status = extract_test_summary()
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    color = "green" if status == "PASS" else "red"
+    emoji = "✅" if status == "PASS" else "❌"
+
     page_title = f"{CONFLUENCE_TITLE} v{version} ({status})"
     body = f"""
-        <h2>🚀 {CONFLUENCE_TITLE} (v{version})</h2>
+        <h2>{emoji} {CONFLUENCE_TITLE} (v{version})</h2>
         <p><b>Date:</b> {timestamp}</p>
-        <p><b>Status:</b> {status}</p>
+        <p><b>Status:</b> <span style="color:{color}; font-weight:bold;">{status}</span></p>
         <p><b>Summary:</b> {summary}</p>
         <p>See attachments below for detailed results.</p>
     """
@@ -212,6 +219,7 @@ def main():
     print(f"🔗 PDF: {pdf_link}")
     print(f"🔗 HTML: {html_link}")
 
+    # Always send email — both for PASS and FAIL
     send_email_notification(version, summary, status, pdf_link, html_link, pdf_path, html_path)
 
 
