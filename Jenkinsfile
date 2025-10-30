@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    options {
+        ansiColor('xterm')          // Enable colored + UTF-8-safe logs
+        timestamps()                // Add timestamps for clarity
+    }
+
     environment {
         // ============================
         // 💡 Core Configuration
@@ -29,6 +34,19 @@ pipeline {
     stages {
 
         // -------------------------------
+        stage('Encoding Setup') {
+            steps {
+                echo '🔧 Setting system encoding to UTF-8...'
+                bat '''
+                    @echo off
+                    chcp 65001 >nul
+                    set PYTHONUTF8=1
+                    echo ✅ Windows console now using UTF-8 (code page 65001)
+                '''
+            }
+        }
+
+        // -------------------------------
         stage('Checkout from GitHub') {
             steps {
                 echo '📦 Checking out source code from GitHub repository...'
@@ -50,6 +68,7 @@ pipeline {
                 echo '🐍 Checking and creating Python virtual environment...'
                 bat '''
                     @echo off
+                    chcp 65001 >nul
                     if not exist "%VENV_PATH%" (
                         echo Creating new virtual environment...
                         python -m venv %VENV_PATH%
@@ -70,6 +89,7 @@ pipeline {
                 echo '📦 Installing Python dependencies...'
                 bat """
                     @echo off
+                    chcp 65001 >nul
                     echo Upgrading pip...
                     %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
 
@@ -89,6 +109,7 @@ pipeline {
                 echo '🧪 Running unit tests and generating raw HTML report...'
                 bat """
                     @echo off
+                    chcp 65001 >nul
                     if not exist "report" mkdir report
                     echo Executing pytest...
                     set PYTHONPATH=%CD%
@@ -110,6 +131,7 @@ pipeline {
                 echo '🎨 Enhancing report: adding summary chart and generating PDF...'
                 bat """
                     @echo off
+                    chcp 65001 >nul
                     set PYTHONUTF8=1
                     %VENV_PATH%\\Scripts\\python.exe enhance_report.py
                 """
@@ -131,7 +153,7 @@ pipeline {
                 echo '🔑 Verifying Confluence API connectivity...'
                 bat """
                     @echo off
-                    set PYTHONUTF8=1
+                    chcp 65001 >nul
                     %VENV_PATH%\\Scripts\\python.exe check_api_token.py
                 """
                 echo '✅ Confluence API verification successful.'
@@ -144,7 +166,7 @@ pipeline {
                 echo '📧 Sending latest test report as PDF attachment via email...'
                 bat """
                     @echo off
-                    set PYTHONUTF8=1
+                    chcp 65001 >nul
                     %VENV_PATH%\\Scripts\\python.exe send_report_email.py
                 """
                 echo '✅ Email with PDF report sent successfully.'
@@ -157,7 +179,7 @@ pipeline {
                 echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
                 bat """
                     @echo off
-                    set PYTHONUTF8=1
+                    chcp 65001 >nul
                     %VENV_PATH%\\Scripts\\python.exe publish_to_confluence.py
                 """
                 echo '✅ Report (HTML & PDF) successfully published to Confluence.'
