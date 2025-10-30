@@ -120,7 +120,8 @@ pipeline {
                     echo Executing pytest...
                     set PYTHONPATH=%CD%
                     set FORCE_FAIL=true
-                    %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html || exit /b 0
+                    %VENV_PATH%\Scripts\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html > report\pytest_output.txt 2>&1 || exit /b 0
+
                 """
                 echo '✅ Pytest completed and raw report generated.'
             }
