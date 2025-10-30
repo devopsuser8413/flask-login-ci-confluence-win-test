@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import datetime
+import smtplib
+from email.message import EmailMessage
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -13,6 +15,13 @@ CONFLUENCE_USER = os.getenv('CONFLUENCE_USER')
 CONFLUENCE_TOKEN = os.getenv('CONFLUENCE_TOKEN')
 CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')
 CONFLUENCE_TITLE = os.getenv('CONFLUENCE_TITLE')
+
+SMTP_HOST = os.getenv('SMTP_HOST')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USER = os.getenv('SMTP_USER')
+SMTP_PASS = os.getenv('SMTP_PASS')
+EMAIL_FROM = os.getenv('REPORT_FROM')
+EMAIL_TO = os.getenv('REPORT_TO')
 
 REPORT_DIR = 'report'
 VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
@@ -106,6 +115,48 @@ def construct_download_link(page_id, file_name):
     return f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}?api=v2"
 
 
+def send_email_notification(version, page_title, summary, pdf_link):
+    """Send notification email after page creation."""
+    msg = EmailMessage()
+    msg["Subject"] = f"🧾 New Test Result Published to Confluence (v{version})"
+    msg["From"] = EMAIL_FROM
+    msg["To"] = EMAIL_TO
+
+    msg.set_content(f"""
+New test result report (v{version}) has been published to Confluence.
+
+Summary:
+{summary}
+
+View or download the attached report:
+{pdf_link}
+
+Page Title: {page_title}
+    """)
+
+    msg.add_alternative(f"""
+    <html><body>
+        <h2>✅ New Test Result Published to Confluence (v{version})</h2>
+        <p><b>Summary:</b> {summary}</p>
+        <p><b>Confluence Page:</b> <a href="{pdf_link}" target="_blank">{page_title}</a></p>
+        <hr>
+        <p>This notification was sent automatically by the Jenkins pipeline.</p>
+    </body></html>
+    """, subtype="html")
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+            s.ehlo()
+            if SMTP_PORT == 587:
+                s.starttls()
+            if SMTP_USER and SMTP_PASS:
+                s.login(SMTP_USER, SMTP_PASS)
+            s.send_message(msg)
+        print(f"📨 Email notification sent to {EMAIL_TO}.")
+    except Exception as e:
+        print(f"⚠️ Failed to send notification email: {e}")
+
+
 # ----------------------------
 # Main Logic
 # ----------------------------
@@ -156,6 +207,9 @@ def main():
 
     print(f"✅ Successfully published v{version} to Confluence with PDF attached.")
     print(f"🔗 {pdf_link}")
+
+    # Send email notification
+    send_email_notification(version, page_title, summary, pdf_link)
 
 
 # ----------------------------
