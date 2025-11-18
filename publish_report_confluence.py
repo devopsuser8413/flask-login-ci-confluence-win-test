@@ -255,13 +255,15 @@ def main():
             print(res.text)
         res.raise_for_status()
 
-    page_url = f"{CONFLUENCE_BASE}/pages/{page_id}"
-    print(f"✅ Confluence publishing complete: {page_url}")
+    page_url = f"{CONFLUENCE_BASE}/spaces/{CONFLUENCE_SPACE}/pages/{page_id}"
+    print(f"✅ Published v{version} ({status}) to Confluence: {page_url}")
+    print(f"🔗 PDF: {pdf_link}")
+    print(f"🔗 HTML: {html_link}")
 
-    # Save URL for email script
+    # Save correct URL for email script
     os.makedirs(REPORT_DIR, exist_ok=True)
-    url_file = os.path.join(REPORT_DIR, "confluence_url.txt")
-    with open(url_file, "w") as f:
+    conf_link_file = os.path.join(REPORT_DIR, "confluence_url.txt")
+    with open(conf_link_file, "w") as f:
         f.write(page_url)
 
     print(f"🔗 Page URL saved → {url_file}")
