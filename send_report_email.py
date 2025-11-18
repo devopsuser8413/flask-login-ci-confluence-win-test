@@ -83,14 +83,19 @@ def extract_test_status():
     rate = (passed / total * 100) if total else 0.0
 
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
-    emoji = "✅" if status == "PASS" else "❌"
+    overall_emoji = "✅" if status == "PASS" else "❌"
 
+    # FIX: Use correct emojis for each metric
     summary = (
-        f"{emoji} {passed} passed, ❌ {failed} failed, "
-        f"⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
+        f"SUMMARY: {overall_emoji}<br>"
+        f"✅ {passed} passed, "
+        f"❌ {failed} failed, "
+        f"⚠️ {errors} errors, "
+        f"⏭ {skipped} skipped — "
+        f"Pass rate: {rate:.1f}%"
     )
-    return status, summary
 
+    return status, summary
 
 # ==========================================================
 # SEND ONE EMAIL TO ALL RECIPIENTS

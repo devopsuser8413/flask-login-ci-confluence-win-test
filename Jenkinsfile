@@ -30,6 +30,14 @@ pipeline {
         CONFLUENCE_TITLE = 'Test Result Report'
 
         // ============================
+        // Confluence
+        // ============================
+        JIRA_URL     = credentials('jira-url')         // stored as secret text
+        JIRA_USER    = credentials('jira-user')        // stored as username
+        RTM_API_KEY  = credentials('jira-api-token')   // stored as secret text
+        JIRA_PROJECT = credentials('jira-project')     // stored as secret text
+
+        // ============================
         // GitHub
         // ============================
         GITHUB_CREDENTIALS = credentials('github-credentials')
@@ -187,7 +195,23 @@ pipeline {
                 """
             }
         }
-    }
+
+    //     stage('Upload to Jira RTM') {
+    //         steps {
+    //             bat """
+    //             "%VENV_PATH%\\Scripts\\python.exe upload_to_jira.py
+    //             """
+    //         }
+    //     }
+
+    //     stage('RTM Integration') {
+    //         steps {
+    //             bat """
+    //             "%VENV_PATH%\\Scripts\\python.exe rtm_autogenerate_from_pytest.py
+    //             """
+    //         }
+    //     }
+    // }
 
     post {
         success {
