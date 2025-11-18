@@ -90,24 +90,40 @@ pipeline {
                 echo '✅ Python environment ready.'
             }
         }
-
         // -------------------------------
-        stage('Install Dependencies') {
+        stage('Setup Python') {
             steps {
-                echo '📦 Installing Python dependencies...'
                 bat """
                     @echo off
                     chcp 65001 >nul
-                    echo Upgrading pip...
-                    %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
-                    echo Installing required modules from requirements.txt...
-                    %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
-                    echo Installing additional visualization and report libraries...
-                    %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
+                    IF EXIST %VENV_PATH% (
+                        rmdir /s /q %VENV_PATH%
+                    )
+                    python -m venv .venv
+                    %VENV_PATH%\\Scripts\\python.exe -m ensurepip --upgrade
+                    %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip setuptools wheel
                 """
                 echo '✅ All dependencies installed successfully.'
             }
         }
+
+        // // -------------------------------
+        // stage('Install Dependencies') {
+        //     steps {
+        //         echo '📦 Installing Python dependencies...'
+        //         bat """
+        //             @echo off
+        //             chcp 65001 >nul
+        //             echo Upgrading pip...
+        //             %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
+        //             echo Installing required modules from requirements.txt...
+        //             %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
+        //             echo Installing additional visualization and report libraries...
+        //             %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
+        //         """
+        //         echo '✅ All dependencies installed successfully.'
+        //     }
+        // }
 
         // -------------------------------
         stage('Run Tests') {

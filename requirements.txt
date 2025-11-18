@@ -1,5 +1,41 @@
-Flask==2.3.3
-Werkzeug==2.3.7
-pytest
-pytest-html
-requests
+# ---- Python Packaging Tools ----
+setuptools==75.1.0
+wheel==0.44.0
+
+# ---- Flask Web App ----
+Flask==3.0.2
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+WTForms==3.1.2
+
+# ---- Email (SMTP) ----
+Jinja2==3.1.4
+python-dotenv==1.0.1
+
+# ---- Confluence API ----
+requests==2.32.3
+atlassian-python-api==3.41.3
+
+# ---- Report Generation ----
+beautifulsoup4==4.12.3
+lxml==5.2.2
+pandas==2.2.3
+
+# ---- Test Framework ----
+pytest==8.3.3
+pytest-html==4.1.1
+
+# ---- Authentication, Security, Input Validation ----
+bcrypt==4.2.0
+itsdangerous==2.2.0
+
+# ---- Utils ----
+PyYAML==6.0.2
+colorama==0.4.6
+
+# ---- Optional: JSON Web Tokens (if your app uses JWT) ----
+# PyJWT==2.10.1
+
+# ---- Optional: Database Drivers ----
+# mysql-connector-python==9.1.0
+# psycopg2-binary==2.9.10
