@@ -73,26 +73,6 @@ pipeline {
         }
 
         // -------------------------------
-        // stage('Setup Python') {
-        //     steps {
-        //         echo '🐍 Checking and creating Python virtual environment...'
-        //         bat '''
-        //             @echo off
-        //             chcp 65001 >nul
-        //             if not exist "%VENV_PATH%" (
-        //                 echo Creating new virtual environment...
-        //                 python -m venv %VENV_PATH%
-        //             ) else (
-        //                 echo Virtual environment already exists.
-        //             )
-        //             echo Checking Python and pip versions...
-        //             %VENV_PATH%\\Scripts\\python.exe --version
-        //             %VENV_PATH%\\Scripts\\pip.exe --version
-        //         '''
-        //         echo '✅ Python environment ready.'
-        //     }
-        // }
-        // -------------------------------
         stage('Setup Python') {
             steps {
                 bat """
@@ -110,23 +90,6 @@ pipeline {
         }
 
         // // -------------------------------
-        // stage('Install Dependencies') {
-        //     steps {
-        //         echo '📦 Installing Python dependencies...'
-        //         bat """
-        //             @echo off
-        //             chcp 65001 >nul
-        //             echo Upgrading pip...
-        //             %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
-        //             echo Installing required modules from requirements.txt...
-        //             %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
-        //             echo Installing additional visualization and report libraries...
-        //             %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
-        //         """
-        //         echo '✅ All dependencies installed successfully.'
-        //     }
-        // }
-
         stage('Install Dependencies') {
             steps {
                 echo '📦 Installing Python dependencies...'

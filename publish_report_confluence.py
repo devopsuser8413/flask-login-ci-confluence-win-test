@@ -332,7 +332,9 @@ def main():
     emoji = "✅" if status == "PASS" else "❌"
 
     # Mode B: new page every run (title includes version + status)
-    page_title = f"{CONFLUENCE_TITLE} v{version} ({status})"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    page_title = f"{CONFLUENCE_TITLE} v{version} ({status}) - {timestamp}"
+
 
     body = f"""
         <h2>{emoji} {CONFLUENCE_TITLE} (v{version})</h2>
