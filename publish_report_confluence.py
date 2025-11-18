@@ -266,9 +266,6 @@ def main():
     with open(conf_link_file, "w") as f:
         f.write(page_url)
 
-    print(f"🔗 Page URL saved → {url_file}")
-
-
 # =============================================================
 # Entry Point
 # =============================================================
