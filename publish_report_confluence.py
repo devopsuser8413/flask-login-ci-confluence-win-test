@@ -134,8 +134,14 @@ def upload_attachment(page_id, file_path):
         sys.exit(f"❌ Missing attachment: {file_path}")
 
     file_name = os.path.basename(file_path)
-    mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
 
+    # Force proper MIME type for HTML — this fixes Confluence reject issues
+    if file_name.lower().endswith(".html"):
+        mime_type = "text/html; charset=utf-8"
+    else:
+        mime_type = "application/pdf"
+
+    # Correct upload URL
     url = (
         f"{CONFLUENCE_BASE}/rest/api/content/"
         f"{page_id}/child/attachment?allowDuplicated=true"
@@ -143,40 +149,54 @@ def upload_attachment(page_id, file_path):
 
     print(f"📤 Uploading: {file_name}")
 
-    # Confluence eventual consistency delay
+    # REQUIRED WAIT — Confluence is eventually consistent
     time.sleep(2)
 
-    # Exponential backoff for Confluence Media Service (recommended)
-    wait_times = [2, 5, 10, 20]
+    # EXPONENTIAL BACKOFF RETRIES (up to 10 attempts)
+    backoff_schedule = [2, 5, 10, 15, 20, 25, 30, 40, 50, 60]
 
-    for attempt, wait in enumerate(wait_times, start=1):
+    for attempt, delay in enumerate(backoff_schedule, start=1):
         try:
             with open(file_path, "rb") as f:
                 files = {"file": (file_name, f, mime_type)}
-                headers = {"X-Atlassian-Token": "no-check"}
 
-                res = requests.post(url, files=files, headers=headers, auth=auth)
+                res = requests.post(
+                    url,
+                    files=files,
+                    headers={"X-Atlassian-Token": "no-check"},
+                    auth=auth,
+                    timeout=60
+                )
 
+            # Success
             if res.status_code in (200, 201):
                 print(f"📎 Uploaded successfully: {file_name}")
                 return file_name
 
-            # Print Confluence’s error
+            # Failure
             print(f"⚠️ Attempt {attempt} failed: HTTP {res.status_code}")
             try:
                 print(res.json())
             except:
                 print(res.text)
 
-            print(f"⏳ Waiting {wait} sec before retry...")
-            time.sleep(wait)
+            # Only retry on safe error codes
+            if res.status_code in (408, 429, 500, 502, 503, 504):
+                print(f"⏳ Waiting {delay} sec before retry...\n")
+                time.sleep(delay)
+                continue
+
+            # Other errors = fatal
+            res.raise_for_status()
 
         except Exception as e:
             print(f"⚠️ Attempt {attempt} exception: {e}")
-            print(f"⏳ Waiting {wait} sec before retry...")
-            time.sleep(wait)
+            print(f"⏳ Waiting {delay} sec before retry...\n")
+            time.sleep(delay)
 
-    sys.exit(f"❌ Failed to upload attachment after {len(wait_times)} attempts: {file_name}")
+    sys.exit(
+        f"❌ Failed to upload attachment after {len(backoff_schedule)} attempts: {file_name}"
+    )
 
 # =============================================================
 # Get current page version
