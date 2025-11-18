@@ -110,41 +110,41 @@ pipeline {
         }
 
         // // -------------------------------
+        // stage('Install Dependencies') {
+        //     steps {
+        //         echo '📦 Installing Python dependencies...'
+        //         bat """
+        //             @echo off
+        //             chcp 65001 >nul
+        //             echo Upgrading pip...
+        //             %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
+        //             echo Installing required modules from requirements.txt...
+        //             %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
+        //             echo Installing additional visualization and report libraries...
+        //             %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
+        //         """
+        //         echo '✅ All dependencies installed successfully.'
+        //     }
+        // }
+
         stage('Install Dependencies') {
             steps {
                 echo '📦 Installing Python dependencies...'
                 bat """
                     @echo off
                     chcp 65001 >nul
-                    echo Upgrading pip...
-                    %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip
-                    echo Installing required modules from requirements.txt...
-                    %VENV_PATH%\\Scripts\\pip.exe install -r requirements.txt
-                    echo Installing additional visualization and report libraries...
-                    %VENV_PATH%\\Scripts\\pip.exe install beautifulsoup4 matplotlib reportlab
+
+                    set PIP_DISABLE_PIP_VERSION_CHECK=1
+
+                    echo Creating pip cache folder if not exists...
+                    if not exist %PIP_CACHE_DIR% mkdir %PIP_CACHE_DIR%
+
+                    echo Installing all dependencies using local cache...
+                    %VENV_PATH%\\Scripts\\pip.exe install --cache-dir %PIP_CACHE_DIR% -r requirements.txt
                 """
-                echo '✅ All dependencies installed successfully.'
+                echo '✅ Dependencies installed much faster!'
             }
         }
-
-stage('Install Dependencies') {
-    steps {
-        echo '📦 Installing Python dependencies...'
-        bat """
-            @echo off
-            chcp 65001 >nul
-
-            set PIP_DISABLE_PIP_VERSION_CHECK=1
-
-            echo Creating pip cache folder if not exists...
-            if not exist %PIP_CACHE_DIR% mkdir %PIP_CACHE_DIR%
-
-            echo Installing all dependencies using local cache...
-            %VENV_PATH%\\Scripts\\pip.exe install --cache-dir %PIP_CACHE_DIR% -r requirements.txt
-        """
-        echo '✅ Dependencies installed much faster!'
-    }
-}
 
         // -------------------------------
         stage('Run Tests') {
