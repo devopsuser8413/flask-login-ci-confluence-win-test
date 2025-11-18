@@ -3,13 +3,14 @@ pipeline {
 
     options {
         timestamps()
+        disableConcurrentBuilds()
     }
 
     environment {
 
-        // ===========================================
-        // 🔧 SMTP Email Configuration
-        // ===========================================
+        // ============================
+        // SMTP
+        // ============================
         SMTP_HOST        = credentials('smtp-host')
         SMTP_PORT        = '587'
         SMTP_USER        = credentials('smtp-user')
@@ -19,55 +20,52 @@ pipeline {
         REPORT_CC        = credentials('cc-email')
         REPORT_BCC       = credentials('bcc-email')
 
-        // ===========================================
-        // 🌐 Confluence Configuration
-        // ===========================================
+        // ============================
+        // Confluence
+        // ============================
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
         CONFLUENCE_SPACE = 'DEMO'
         CONFLUENCE_TITLE = 'Test Result Report'
 
-        // ===========================================
-        // 🔐 GitHub
-        // ===========================================
+        // ============================
+        // GitHub
+        // ============================
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
-        // ===========================================
-        // 📁 Report Paths
-        // ===========================================
+        // ============================
+        // Report
+        // ============================
         REPORT_PATH   = 'report/report.html'
         REPORT_DIR    = 'report'
         VERSION_FILE  = 'report/version.txt'
 
-        // ===========================================
-        // 🐍 Python Env
-        // ===========================================
-        VENV_PATH      = '.venv'
+        // ============================
+        // Python Setup
+        // ============================
+        VENV_PATH     = "C:\\jenkins_home\\python_venvs\\flask_venv"
+        PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
+
         PYTHONUTF8     = '1'
         PYTHONIOENCODING = 'utf-8'
         PYTHONLEGACYWINDOWSSTDIO = '1'
-
-        // ===========================================
-        // ⚡ PIP Cache
-        // ===========================================
-        PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
     }
 
     stages {
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Setup Encoding') {
             steps {
                 echo 'Setting UTF-8 encoding...'
-                bat '''
+                bat """
                     @echo off
                     chcp 65001 >nul
-                '''
+                """
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Checkout GitHub') {
             steps {
                 echo 'Checking out source code...'
@@ -85,27 +83,27 @@ pipeline {
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Setup Python') {
             steps {
-                echo 'Creating Python virtual environment...'
+                echo "Ensuring Python virtual environment exists..."
+
+                // REUSE VENV → DO NOT DELETE ANYMORE
                 bat """
                     @echo off
 
-                    if exist "%VENV_PATH%" (
-                        rmdir /s /q "%VENV_PATH%"
+                    if not exist "%VENV_PATH%" (
+                        echo Creating new venv...
+                        python -m venv "%VENV_PATH%"
                     )
 
-                    python -m venv "%VENV_PATH%"
-
-                    "%VENV_PATH%\\Scripts\\python.exe" -m pip install --quiet ^
-                        --upgrade pip setuptools wheel ^
+                    "%VENV_PATH%\\Scripts\\python.exe" -m pip install --upgrade pip setuptools wheel ^
                         --cache-dir "%PIP_CACHE_DIR%"
                 """
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Install Dependencies') {
             steps {
                 echo 'Installing dependencies...'
@@ -114,13 +112,27 @@ pipeline {
 
                     if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
 
-                    "%VENV_PATH%\\Scripts\\pip.exe" install --quiet ^
-                        --cache-dir "%PIP_CACHE_DIR%" -r requirements.txt
+                    rem === Install only when requirements changed ===
+                    if exist requirements.lock (
+                        fc requirements.txt requirements.lock >nul
+                        if %errorlevel%==0 (
+                            echo Requirements unchanged. Skipping pip install.
+                            exit /b 0
+                        )
+                    )
+
+                    echo Installing dependencies...
+                    "%VENV_PATH%\\Scripts\\pip.exe" install ^
+                        --prefer-binary ^
+                        --cache-dir "%PIP_CACHE_DIR%" ^
+                        -r requirements.txt
+
+                    copy /Y requirements.txt requirements.lock >nul
                 """
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Run Tests') {
             steps {
                 echo 'Running tests...'
@@ -129,7 +141,8 @@ pipeline {
                     if not exist "report" mkdir report
 
                     "%VENV_PATH%\\Scripts\\python.exe" -m pytest ^
-                        --html=%REPORT_PATH% --self-contained-html ^
+                        --html=%REPORT_PATH% ^
+                        --self-contained-html ^
                         > report\\pytest_output.txt 2>&1 || exit /b 0
                 """
             }
@@ -140,7 +153,7 @@ pipeline {
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Generate Report') {
             steps {
                 bat """
@@ -156,16 +169,17 @@ pipeline {
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Publish Report to Confluence') {
             steps {
                 bat """
+                    timeout /t 2 >nul
                     "%VENV_PATH%\\Scripts\\python.exe" publish_report_confluence.py
                 """
             }
         }
 
-        // ----------------------------------------------------------------------
+        // ------------------------------
         stage('Email Report') {
             steps {
                 bat """
@@ -175,7 +189,6 @@ pipeline {
         }
     }
 
-    // ----------------------------------------------------------------------
     post {
         success {
             echo 'PIPELINE COMPLETED SUCCESSFULLY'
