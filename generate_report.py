@@ -25,17 +25,15 @@ VERSION_FILE = os.path.join(OUTPUT_DIR, 'version.txt')
 # =============================
 def get_next_version():
     """Reads version.txt → increases version → writes new version."""
+    version = 0
     if os.path.exists(VERSION_FILE):
         try:
             with open(VERSION_FILE) as f:
                 version = int(f.read().strip())
         except:
             version = 0
-    else:
-        version = 0
 
     version += 1
-
     with open(VERSION_FILE, 'w') as vf:
         vf.write(str(version))
 
@@ -46,15 +44,11 @@ def get_next_version():
 # Summary Count Extractor
 # =============================
 def extract_summary_counts(html_text):
-    """
-    Extract numeric counts from pytest HTML.
-    Matches "12 Passed", "3 Failed" etc.
-    """
     patterns = {
         'passed': r'(\d+)\s+passed',
         'failed': r'(\d+)\s+failed',
         'skipped': r'(\d+)\s+skipped',
-        'error':   r'(\d+)\s+errors?'
+        'error':   r'(\d+)\s+error[s]?(?=\b)'   # Updated regex
     }
 
     counts = {}
@@ -70,7 +64,17 @@ def extract_summary_counts(html_text):
 # =============================
 def create_summary_chart(counts):
     labels = ['Passed', 'Failed', 'Skipped', 'Error']
-    values = [counts['passed'], counts['failed'], counts['skipped'], counts['error']]
+    values = [
+        counts['passed'],
+        counts['failed'],
+        counts['skipped'],
+        counts['error']
+    ]
+
+    # Prevent all-zero crash
+    if sum(values) == 0:
+        values = [0.001] * 4
+
     colors_ = ['#4CAF50', '#F44336', '#FF9800', '#9E9E9E']
 
     fig, ax = plt.subplots(figsize=(6, 2))
@@ -81,7 +85,7 @@ def create_summary_chart(counts):
     plt.tight_layout()
 
     buf = BytesIO()
-    plt.savefig(buf, format='png', dpi=150)
+    plt.savefig(buf, format='png', dpi=200)  # Higher DPI
     buf.seek(0)
     plt.close(fig)
     return buf
@@ -98,11 +102,9 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
     elements = []
 
     # Title
-    title = Paragraph(f"<b>Test Result Report - v{version}</b>", styles['Title'])
-    elements.append(title)
+    elements.append(Paragraph(f"<b>Test Result Report - v{version}</b>", styles['Title']))
     elements.append(Spacer(1, 12))
 
-    # Summary
     summary_html = f"""
         <b>Passed:</b> <font color='green'>{counts['passed']}</font> |
         <b>Failed:</b> <font color='red'>{counts['failed']}</font> |
@@ -110,16 +112,15 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
         <b>Errors:</b> <font color='gray'>{counts['error']}</font><br/>
         <b>Pass Rate:</b> {pass_rate:.1f}%
     """
+
     elements.append(Paragraph(summary_html, styles['Normal']))
     elements.append(Spacer(1, 20))
 
-    # Chart
     img = Image(chart_buf)
     img._restrictSize(400, 150)
     elements.append(img)
     elements.append(Spacer(1, 20))
 
-    # Table
     data = [
         ["Metric", "Count"],
         ["Passed", counts["passed"]],
@@ -129,7 +130,7 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
         ["Pass Rate", f"{pass_rate:.1f}%"]
     ]
 
-    table = Table(data, colWidths=[150, 150])
+    table = Table(data, colWidths=[200, 200])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
         ('TEXTCOLOR',   (0, 0), (-1, 0), colors.black),
@@ -138,8 +139,8 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
         ('FONTNAME',    (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('BACKGROUND',  (0, 1), (-1, -1), colors.whitesmoke),
     ]))
-    elements.append(table)
 
+    elements.append(table)
     doc.build(elements)
     print(f"📄 PDF report generated: {pdf_file}")
     return pdf_file
@@ -150,21 +151,19 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
 # =============================
 def enhance_html_report():
     if not os.path.exists(INPUT_REPORT):
-        raise SystemExit(f"❌ Base pytest HTML report not found: {INPUT_REPORT}")
+        raise SystemExit(f"❌ Base HTML report not found: {INPUT_REPORT}")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Read input HTML
     with open(INPUT_REPORT, 'r', encoding='utf-8') as f:
         soup = BeautifulSoup(f, 'html.parser')
+
     raw_html = str(soup)
 
-    # Extract counts
     counts = extract_summary_counts(raw_html)
     total = sum(counts.values()) or 1
     pass_rate = (counts['passed'] / total) * 100
 
-    # Build summary block
     summary_block = f"""
         <div style="background-color:#f9f9f9; border:1px solid #ddd; padding:15px; margin-bottom:20px;">
           <h2>🔍 Test Execution Summary</h2>
@@ -178,14 +177,12 @@ def enhance_html_report():
         </div>
     """
 
-    # Insert into <body>
-    body = soup.find('body')
+    # Safe insertion
+    body = soup.body or soup.find('body') or soup
     body.insert(0, BeautifulSoup(summary_block, 'html.parser'))
 
-    # Version
     version = get_next_version()
 
-    # Save enhanced HTML
     html_out = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_v{version}.html")
     with open(html_out, 'w', encoding='utf-8') as f:
         f.write(str(soup))
@@ -193,10 +190,7 @@ def enhance_html_report():
     print(f"✅ Enhanced HTML report created: {html_out}")
     print(f"🔢 Version v{version}")
 
-    # Summary chart
     chart_buf = create_summary_chart(counts)
-
-    # Create PDF
     generate_pdf_report(version, counts, pass_rate, chart_buf)
 
 

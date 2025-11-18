@@ -1,20 +1,20 @@
+#!/usr/bin/env python3
 import os
 import sys
 import time
 import datetime
 import json
 import re
-
 import requests
 from requests.auth import HTTPBasicAuth
 
-# ----------------------------
+# =============================================================
 # Environment Variables
-# ----------------------------
-CONFLUENCE_BASE  = os.getenv('CONFLUENCE_BASE', '').rstrip('/')  # e.g. https://your-org.atlassian.net/wiki
+# =============================================================
+CONFLUENCE_BASE  = os.getenv('CONFLUENCE_BASE', '').rstrip('/')
 CONFLUENCE_USER  = os.getenv('CONFLUENCE_USER')
 CONFLUENCE_TOKEN = os.getenv('CONFLUENCE_TOKEN')
-CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')  # e.g. DEMO
+CONFLUENCE_SPACE = os.getenv('CONFLUENCE_SPACE')      # e.g., DEMO
 CONFLUENCE_TITLE = os.getenv('CONFLUENCE_TITLE', 'Test Result Report')
 
 REPORT_DIR   = 'report'
@@ -29,6 +29,9 @@ headers = {
 }
 
 
+# =============================================================
+# Validation
+# =============================================================
 def validate_env():
     missing = []
     for key, value in {
@@ -42,10 +45,14 @@ def validate_env():
     if missing:
         sys.exit(f"❌ Missing required environment variables: {', '.join(missing)}")
 
-    if '/rest/api' in CONFLUENCE_BASE:
-        sys.exit("❌ CONFLUENCE_BASE should NOT include '/rest/api'. Use base like 'https://org.atlassian.net/wiki'.")
+    if "/rest/api" in CONFLUENCE_BASE:
+        sys.exit("❌ CONFLUENCE_BASE must NOT contain '/rest/api'. "
+                 "Use the base URL: https://your-org.atlassian.net/wiki")
 
 
+# =============================================================
+# Read version
+# =============================================================
 def read_version():
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE) as f:
@@ -56,6 +63,9 @@ def read_version():
     return 1
 
 
+# =============================================================
+# Extract test summary
+# =============================================================
 def extract_test_summary():
     if not os.path.exists(PYTEST_LOG):
         return "No test summary available.", "UNKNOWN"
@@ -65,14 +75,10 @@ def extract_test_summary():
 
     passed = failed = errors = skipped = 0
 
-    if m := re.search(r"(\d+)\s+passed", text, re.IGNORECASE):
-        passed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+failed", text, re.IGNORECASE):
-        failed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+errors?", text, re.IGNORECASE):
-        errors = int(m.group(1))
-    if m := re.search(r"(\d+)\s+skipped", text, re.IGNORECASE):
-        skipped = int(m.group(1))
+    if m := re.search(r"(\d+)\s+passed", text, re.I):  passed = int(m.group(1))
+    if m := re.search(r"(\d+)\s+failed", text, re.I):  failed = int(m.group(1))
+    if m := re.search(r"(\d+)\s+errors?", text, re.I): errors = int(m.group(1))
+    if m := re.search(r"(\d+)\s+skipped", text, re.I): skipped = int(m.group(1))
 
     total = passed + failed + errors + skipped
     rate = (passed / total * 100) if total else 0
@@ -88,6 +94,9 @@ def extract_test_summary():
     return summary, status
 
 
+# =============================================================
+# Create Confluence Page
+# =============================================================
 def create_confluence_page(title, html_body):
     url = f"{CONFLUENCE_BASE}/rest/api/content"
     payload = {
@@ -101,32 +110,34 @@ def create_confluence_page(title, html_body):
             }
         }
     }
-    print(f"🌐 Creating Confluence page at: {url}")
+
+    print(f"🌐 Creating Confluence page: {title}")
     res = requests.post(url, headers=headers, json=payload, auth=auth)
 
     if not res.ok:
-        print(f"❌ Confluence create page failed: HTTP {res.status_code}")
+        print(f"❌ Failed to create page: HTTP {res.status_code}")
         try:
-            print("🧾 Response:", json.dumps(res.json(), indent=2))
-        except Exception:
-            print("🧾 Response text:", res.text)
+            print(json.dumps(res.json(), indent=2))
+        except:
+            print(res.text)
         res.raise_for_status()
 
     data = res.json()
-    page_id = data["id"]
-    print(f"🧾 Created new Confluence page '{title}' (ID: {page_id})")
-    return page_id
+    return data["id"]
 
 
+# =============================================================
+# Upload Attachment
+# =============================================================
 def upload_attachment(page_id, file_path):
     if not os.path.exists(file_path):
-        sys.exit(f"❌ Attachment file not found: {file_path}")
+        sys.exit(f"❌ Missing attachment: {file_path}")
 
     file_name = os.path.basename(file_path)
     mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
 
-    print(f"📤 Uploading attachment '{file_name}' to page {page_id}...")
+    print(f"📤 Uploading: {file_name}")
 
     for attempt in range(1, 4):
         try:
@@ -135,90 +146,91 @@ def upload_attachment(page_id, file_path):
                 res = requests.post(
                     url,
                     files=files,
-                    auth=auth,
-                    headers={"X-Atlassian-Token": "no-check"}
+                    headers={"X-Atlassian-Token": "no-check"},
+                    auth=auth
                 )
             if res.status_code in (200, 201):
-                data = res.json()
-                attachment_id = data["results"][0]["id"]
-                print(f"📎 Uploaded '{file_name}' (id: {attachment_id})")
+                print(f"📎 Uploaded successfully: {file_name}")
                 return file_name
-            else:
-                print(f"⚠️ Attempt {attempt} upload failed ({res.status_code})")
-                try:
-                    print("   Response:", res.json())
-                except Exception:
-                    print("   Response text:", res.text)
-                time.sleep(2)
+
+            print(f"⚠️ Attempt {attempt} failed (HTTP {res.status_code})")
+            time.sleep(2)
+
         except Exception as e:
             print(f"⚠️ Attempt {attempt} error: {e}")
             time.sleep(2)
 
-    sys.exit(f"❌ Failed to upload attachment '{file_name}' after 3 attempts.")
+    sys.exit(f"❌ Failed to upload attachment after 3 attempts: {file_name}")
 
 
-def construct_download_link(page_id, file_name):
-    return f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{file_name}?api=v2"
-
-
+# =============================================================
+# Get current page version
+# =============================================================
 def get_page_version(page_id):
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}?expand=version"
     res = requests.get(url, auth=auth)
     if not res.ok:
-        print(f"❌ Failed to fetch page version: HTTP {res.status_code}")
+        print(f"❌ Unable to fetch page version: HTTP {res.status_code}")
         try:
-            print("🧾 Response:", res.json())
-        except Exception:
-            print("🧾 Response text:", res.text)
+            print(json.dumps(res.json(), indent=2))
+        except:
+            print(res.text)
         res.raise_for_status()
-    data = res.json()
-    return data["version"]["number"]
+
+    return res.json()["version"]["number"]
 
 
+# =============================================================
+# Main Script
+# =============================================================
 def main():
     validate_env()
 
     version = read_version()
+
     pdf_path  = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.pdf")
     html_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.html")
 
     if not os.path.exists(pdf_path) or not os.path.exists(html_path):
-        sys.exit(f"❌ Missing report files: {pdf_path} or {html_path}")
+        sys.exit("❌ Report files missing! Cannot publish to Confluence.")
 
     summary, status = extract_test_summary()
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    safe_timestamp = timestamp.replace(":", "-")          # prevent invalid title errors
 
-    color = "green" if status == "PASS" else "red"
     emoji = "✅" if status == "PASS" else "❌"
+    color = "green" if status == "PASS" else "red"
 
-    # Unique title per run
-    page_title = f"{CONFLUENCE_TITLE} v{version} ({status}) - {timestamp}"
+    page_title = f"{CONFLUENCE_TITLE} v{version} ({status}) - {safe_timestamp}"
 
     body = f"""
         <h2>{emoji} {CONFLUENCE_TITLE} (v{version})</h2>
         <p><b>Date:</b> {timestamp}</p>
         <p><b>Status:</b> <span style="color:{color}; font-weight:bold;">{status}</span></p>
         <p><b>Summary:</b> {summary}</p>
-        <p>See attachments below for detailed results.</p>
+        <p>Details available in attached PDF/HTML files.</p>
     """
 
+    # Create page
     page_id = create_confluence_page(page_title, body)
 
-    print("📤 Uploading attachments...")
+    # Upload attachments
     pdf_name  = upload_attachment(page_id, pdf_path)
     html_name = upload_attachment(page_id, html_path)
 
-    pdf_link  = construct_download_link(page_id, pdf_name)
-    html_link = construct_download_link(page_id, html_name)
+    pdf_link  = f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{pdf_name}?api=v2"
+    html_link = f"{CONFLUENCE_BASE}/download/attachments/{page_id}/{html_name}?api=v2"
 
+    # Update page with download links
     updated_body = body + f"""
-        <p><b>📎 Downloads:</b>
-            <br>➡️ <a href="{html_link}" target="_blank">{html_name}</a>
-            <br>➡️ <a href="{pdf_link}" target="_blank">{pdf_name}</a>
-        </p>
+        <h3>📎 Attachments</h3>
+        <p><a href="{html_link}">{html_name}</a></p>
+        <p><a href="{pdf_link}">{pdf_name}</a></p>
     """
 
     current_version = get_page_version(page_id)
+
     update_url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}"
     update_payload = {
         "id": page_id,
@@ -233,28 +245,31 @@ def main():
         }
     }
 
-    print(f"📝 Updating page {page_id} to version {current_version + 1}...")
+    print(f"📝 Updating page {page_id} to v{current_version + 1}...")
     res = requests.put(update_url, headers=headers, json=update_payload, auth=auth)
     if not res.ok:
-        print(f"❌ Failed to update page: HTTP {res.status_code}")
+        print(f"❌ Page update failed: HTTP {res.status_code}")
         try:
-            print("🧾 Response:", res.json())
-        except Exception:
-            print("🧾 Response text:", res.text)
+            print(json.dumps(res.json(), indent=2))
+        except:
+            print(res.text)
         res.raise_for_status()
 
     page_url = f"{CONFLUENCE_BASE}/pages/{page_id}"
-    print(f"✅ Published v{version} ({status}) to Confluence: {page_url}")
-    print(f"🔗 PDF: {pdf_link}")
-    print(f"🔗 HTML: {html_link}")
+    print(f"✅ Confluence publishing complete: {page_url}")
 
-    # Save Confluence URL for email script
+    # Save URL for email script
     os.makedirs(REPORT_DIR, exist_ok=True)
-    conf_link_file = os.path.join(REPORT_DIR, "confluence_url.txt")
-    with open(conf_link_file, "w") as f:
+    url_file = os.path.join(REPORT_DIR, "confluence_url.txt")
+    with open(url_file, "w") as f:
         f.write(page_url)
 
+    print(f"🔗 Page URL saved → {url_file}")
 
+
+# =============================================================
+# Entry Point
+# =============================================================
 if __name__ == "__main__":
     try:
         main()
