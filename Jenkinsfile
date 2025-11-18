@@ -35,6 +35,8 @@ pipeline {
         PYTHONUTF8 = '1'
         PYTHONIOENCODING = 'utf-8'
         PYTHONLEGACYWINDOWSSTDIO = '1'
+
+        PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
     }
 
     stages {
@@ -124,6 +126,25 @@ pipeline {
                 echo '✅ All dependencies installed successfully.'
             }
         }
+
+stage('Install Dependencies') {
+    steps {
+        echo '📦 Installing Python dependencies...'
+        bat """
+            @echo off
+            chcp 65001 >nul
+
+            set PIP_DISABLE_PIP_VERSION_CHECK=1
+
+            echo Creating pip cache folder if not exists...
+            if not exist %PIP_CACHE_DIR% mkdir %PIP_CACHE_DIR%
+
+            echo Installing all dependencies using local cache...
+            %VENV_PATH%\\Scripts\\pip.exe install --cache-dir %PIP_CACHE_DIR% -r requirements.txt
+        """
+        echo '✅ Dependencies installed much faster!'
+    }
+}
 
         // -------------------------------
         stage('Run Tests') {

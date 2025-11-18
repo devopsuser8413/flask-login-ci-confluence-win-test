@@ -20,6 +20,8 @@ atlassian-python-api==3.41.3
 beautifulsoup4==4.12.3
 lxml==5.2.2
 pandas==2.2.3
+matplotlib==3.9.2
+reportlab==4.2.0
 
 # ---- Test Framework ----
 pytest==8.3.3
@@ -32,10 +34,3 @@ itsdangerous==2.2.0
 # ---- Utils ----
 PyYAML==6.0.2
 colorama==0.4.6
-
-# ---- Optional: JSON Web Tokens (if your app uses JWT) ----
-# PyJWT==2.10.1
-
-# ---- Optional: Database Drivers ----
-# mysql-connector-python==9.1.0
-# psycopg2-binary==2.9.10
