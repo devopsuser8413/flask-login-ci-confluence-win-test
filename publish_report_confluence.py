@@ -135,33 +135,50 @@ def upload_attachment(page_id, file_path):
 
     file_name = os.path.basename(file_path)
     mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
-    url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
+
+    url = (
+        f"{CONFLUENCE_BASE}/rest/api/content/"
+        f"{page_id}/child/attachment?allowDuplicated=true"
+    )
 
     print(f"📤 Uploading: {file_name}")
+
+    # REQUIRED DELAY (Confluence Cloud eventually consistency)
+    time.sleep(2)
 
     for attempt in range(1, 4):
         try:
             with open(file_path, "rb") as f:
-                files = {"file": (file_name, f, mime_type)}
+                files = {
+                    "file": (file_name, f, mime_type)
+                }
+
+                headers = { "X-Atlassian-Token": "no-check" }
+
                 res = requests.post(
                     url,
                     files=files,
-                    headers={"X-Atlassian-Token": "no-check"},
-                    auth=auth
+                    headers=headers,
+                    auth=auth,
                 )
+
             if res.status_code in (200, 201):
                 print(f"📎 Uploaded successfully: {file_name}")
                 return file_name
 
-            print(f"⚠️ Attempt {attempt} failed (HTTP {res.status_code})")
+            print(f"⚠️ Attempt {attempt} failed: HTTP {res.status_code}")
+            try:
+                print(res.json())
+            except:
+                print(res.text)
+
             time.sleep(2)
 
         except Exception as e:
-            print(f"⚠️ Attempt {attempt} error: {e}")
+            print(f"⚠️ Attempt {attempt} exception: {e}")
             time.sleep(2)
 
     sys.exit(f"❌ Failed to upload attachment after 3 attempts: {file_name}")
-
 
 # =============================================================
 # Get current page version
