@@ -2,8 +2,7 @@ pipeline {
     agent any
 
     options {
-        timestamps()
-        ansiColor('xterm')
+        timestamps()   // ANSI color is NOT allowed here
     }
 
     environment {
@@ -17,20 +16,20 @@ pipeline {
         SMTP_PASS        = credentials('smtp-pass')
         REPORT_FROM      = credentials('sender-email')
         REPORT_TO        = credentials('receiver-email')   // comma-separated
-        REPORT_CC        = ''                              // optional, comma-separated
-        REPORT_BCC       = ''                              // optional, comma-separated
+        REPORT_CC        = credentials('cc-email')         // optional
+        REPORT_BCC       = credentials('bcc-email')        // optional
 
         // ===========================================
         // 🌐 Confluence Configuration
         // ===========================================
-        CONFLUENCE_BASE  = credentials('confluence-base')  // e.g. https://your-org.atlassian.net/wiki
+        CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
         CONFLUENCE_SPACE = 'DEMO'
         CONFLUENCE_TITLE = 'Test Result Report'
 
         // ===========================================
-        // 🔐 GitHub Authentication
+        // 🔐 GitHub
         // ===========================================
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
@@ -50,116 +49,141 @@ pipeline {
         PYTHONLEGACYWINDOWSSTDIO = '1'
 
         // ===========================================
-        // ⚡ PIP Cache Directory for Fast Installs
+        // ⚡ PIP Cache
         // ===========================================
         PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
     }
 
     stages {
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
+        stage('Enable ANSI Colors') {
+            steps {
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo "✨ ANSI Color Mode Enabled"
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
         stage('Setup Encoding') {
             steps {
-                echo '🔧 Setting system encoding to UTF-8...'
-                bat '''
-                    @echo off
-                    chcp 65001 >nul
-                    echo UTF-8 activated (Code Page 65001)
-                '''
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '🔧 Setting system encoding to UTF-8...'
+                    bat '''
+                        @echo off
+                        chcp 65001 >nul
+                        echo UTF-8 enabled (Code Page 65001)
+                    '''
+                }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Checkout GitHub') {
             steps {
-                echo '📦 Checking out source code...'
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win-test.git',
-                        credentialsId: 'github-credentials'
-                    ]]
-                ])
-                echo '✅ Checkout complete.'
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '📦 Checking out source code...'
+
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/devopsuser8413/flask-login-ci-confluence-win-test.git',
+                            credentialsId: 'github-credentials'
+                        ]]
+                    ])
+
+                    echo '✅ Source checkout completed.'
+                }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Setup Python') {
             steps {
-                echo '🐍 Creating fresh Python virtual environment...'
-                bat """
-                    @echo off
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '🐍 Creating Python Virtual Environment...'
+                    bat """
+                        @echo off
 
-                    if exist "%VENV_PATH%" (
-                        echo Removing old venv...
-                        rmdir /s /q "%VENV_PATH%"
-                    )
+                        if exist "%VENV_PATH%" (
+                            echo Removing old Python venv...
+                            rmdir /s /q "%VENV_PATH%"
+                        )
 
-                    python -m venv "%VENV_PATH%"
+                        python -m venv "%VENV_PATH%"
 
-                    "%VENV_PATH%\\Scripts\\python.exe" -m pip install --quiet ^
-                        --upgrade pip setuptools wheel ^
-                        --cache-dir "%PIP_CACHE_DIR%" --no-warn-script-location
-                """
-                echo '🚀 Python environment ready.'
+                        "%VENV_PATH%\\Scripts\\python.exe" -m pip install --quiet ^
+                            --upgrade pip setuptools wheel ^
+                            --cache-dir "%PIP_CACHE_DIR%" --no-warn-script-location
+                    """
+                    echo '🚀 Python environment ready.'
+                }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Install Dependencies') {
             steps {
-                echo '📦 Installing Python dependencies...'
-                bat """
-                    @echo off
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '📦 Installing Python dependencies...'
+                    bat """
+                        @echo off
+                        if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
 
-                    if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
-
-                    "%VENV_PATH%\\Scripts\\pip.exe" install --quiet ^
-                        --cache-dir "%PIP_CACHE_DIR%" -r requirements.txt
-                """
-                echo '⚡ Dependencies installed quickly with pip cache!'
+                        "%VENV_PATH%\\Scripts\\pip.exe" install --quiet ^
+                            --cache-dir "%PIP_CACHE_DIR%" -r requirements.txt
+                    """
+                    echo '⚡ Dependencies installed using PIP cache!'
+                }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Run Tests') {
             steps {
-                echo '🧪 Running test suite and generating raw HTML report...'
-                bat """
-                    @echo off
-                    if not exist "report" mkdir report
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '🧪 Running Tests and Generating Raw HTML Report...'
 
-                    set PYTHONPATH=%CD%
+                    bat """
+                        @echo off
+                        if not exist "report" mkdir report
+                        set PYTHONPATH=%CD%
 
-                    "%VENV_PATH%\\Scripts\\python.exe" -m pytest ^
-                        --html=%REPORT_PATH% --self-contained-html ^
-                        > report\\pytest_output.txt 2>&1 || exit /b 0
-                """
-                echo '✅ Tests executed (pytest_output.txt + raw HTML generated).'
+                        "%VENV_PATH%\\Scripts\\python.exe" -m pytest ^
+                            --html=%REPORT_PATH% --self-contained-html ^
+                            > report\\pytest_output.txt 2>&1 || exit /b 0
+                    """
+
+                    echo '✅ Raw report & pytest_output.txt generated.'
+                }
             }
+
             post {
                 always {
-                    echo '📤 Archiving raw HTML report...'
+                    echo '📤 Archiving Raw HTML...'
                     archiveArtifacts artifacts: 'report/report.html', fingerprint: true
                 }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Generate Report') {
             steps {
-                echo '🎨 Enhancing HTML report and creating PDF...'
-                bat """
-                    @echo off
-                    "%VENV_PATH%\\Scripts\\python.exe" generate_report.py
-                """
-                echo '📄 Enhanced HTML & PDF report generated.'
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '🎨 Enhancing HTML report and creating PDF...'
+                    bat """
+                        @echo off
+                        "%VENV_PATH%\\Scripts\\python.exe" generate_report.py
+                    """
+                    echo '📄 PDF + Enhanced HTML generated.'
+                }
             }
+
             post {
                 always {
-                    echo '📦 Archiving enhanced reports...'
+                    echo '📦 Archiving Enhanced Reports...'
                     archiveArtifacts artifacts: 'report/test_result_report_v*.html', fingerprint: true
                     archiveArtifacts artifacts: 'report/test_result_report_v*.pdf', fingerprint: true
                     archiveArtifacts artifacts: 'report/version.txt', fingerprint: true
@@ -167,60 +191,62 @@ pipeline {
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Publish Report to Confluence') {
             steps {
-                echo '🌐 Publishing reports to Confluence (new page per run)...'
-                bat """
-                    @echo off
-                    "%VENV_PATH%\\Scripts\\python.exe" publish_report_confluence.py
-                """
-                echo '✅ Confluence page created and attachments uploaded.'
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '🌐 Publishing Reports to Confluence...'
+                    bat """
+                        @echo off
+                        "%VENV_PATH%\\Scripts\\python.exe" publish_report_confluence.py
+                    """
+                    echo '✅ Confluence page created & files uploaded.'
+                }
             }
         }
 
-        // ============================================================================
+        // ----------------------------------------------------------------------
         stage('Email Report') {
             steps {
-                echo '📧 Sending report email (with PDF + Confluence link)...'
-                bat """
-                    @echo off
-                    "%VENV_PATH%\\Scripts\\python.exe" send_report_email.py
-                """
-                echo '📨 Email notifications sent.'
+                wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm']) {
+                    echo '📧 Sending Test Report Email...'
+                    bat """
+                        @echo off
+                        "%VENV_PATH%\\Scripts\\python.exe" send_report_email.py
+                    """
+                    echo '📨 Email notifications sent.'
+                }
             }
         }
     }
 
-    // ============================================================================
+    // ----------------------------------------------------------------------
     post {
-
         success {
             echo '''
-            ✅ PIPELINE COMPLETED SUCCESSFULLY
-            =================================
-            ✔ All stages executed cleanly
-            ✔ Reports archived (HTML & PDF)
-            ✔ Confluence page published
-            ✔ Email sent to recipients
-            =================================
+            ✅ PIPELINE SUCCESS
+            ================================
+            ✔ Tests executed successfully
+            ✔ Reports enhanced (HTML + PDF)
+            ✔ Confluence page created
+            ✔ Email delivered
+            ================================
             '''
         }
 
         failure {
             echo '''
             ❌ PIPELINE FAILED
-            =================================
-            ⚠ Check failed stage logs
-            ⚠ Verify SMTP & Confluence credentials
-            ⚠ Ensure Python environment & files exist
-            ⚠ Confirm network accessibility
-            =================================
+            ================================
+            ⚠ Review the failing stage
+            ⚠ Check SMTP/Confluence creds
+            ⚠ Validate network access
+            ================================
             '''
         }
 
         always {
-            echo '🧹 Cleaning up workspace...'
+            echo '🧹 Cleaning workspace complete.'
         }
     }
 }
