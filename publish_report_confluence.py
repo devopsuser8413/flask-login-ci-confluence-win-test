@@ -143,42 +143,40 @@ def upload_attachment(page_id, file_path):
 
     print(f"📤 Uploading: {file_name}")
 
-    # REQUIRED DELAY (Confluence Cloud eventually consistency)
+    # Confluence eventual consistency delay
     time.sleep(2)
 
-    for attempt in range(1, 4):
+    # Exponential backoff for Confluence Media Service (recommended)
+    wait_times = [2, 5, 10, 20]
+
+    for attempt, wait in enumerate(wait_times, start=1):
         try:
             with open(file_path, "rb") as f:
-                files = {
-                    "file": (file_name, f, mime_type)
-                }
+                files = {"file": (file_name, f, mime_type)}
+                headers = {"X-Atlassian-Token": "no-check"}
 
-                headers = { "X-Atlassian-Token": "no-check" }
-
-                res = requests.post(
-                    url,
-                    files=files,
-                    headers=headers,
-                    auth=auth,
-                )
+                res = requests.post(url, files=files, headers=headers, auth=auth)
 
             if res.status_code in (200, 201):
                 print(f"📎 Uploaded successfully: {file_name}")
                 return file_name
 
+            # Print Confluence’s error
             print(f"⚠️ Attempt {attempt} failed: HTTP {res.status_code}")
             try:
                 print(res.json())
             except:
                 print(res.text)
 
-            time.sleep(2)
+            print(f"⏳ Waiting {wait} sec before retry...")
+            time.sleep(wait)
 
         except Exception as e:
             print(f"⚠️ Attempt {attempt} exception: {e}")
-            time.sleep(2)
+            print(f"⏳ Waiting {wait} sec before retry...")
+            time.sleep(wait)
 
-    sys.exit(f"❌ Failed to upload attachment after 3 attempts: {file_name}")
+    sys.exit(f"❌ Failed to upload attachment after {len(wait_times)} attempts: {file_name}")
 
 # =============================================================
 # Get current page version
