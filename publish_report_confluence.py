@@ -131,13 +131,18 @@ def create_confluence_page(title, html_body):
 # =============================================================
 def upload_attachment(page_id, file_path):
     if not os.path.exists(file_path):
-        sys.exit(f"❌ Missing attachment: {file_path}")
+        sys.exit(f"❌ Attachment file not found: {file_path}")
 
     file_name = os.path.basename(file_path)
     mime_type = "application/pdf" if file_name.endswith(".pdf") else "text/html"
     url = f"{CONFLUENCE_BASE}/rest/api/content/{page_id}/child/attachment"
 
-    print(f"📤 Uploading: {file_name}")
+    file_size = os.path.getsize(file_path)
+    print(f"📤 Uploading attachment '{file_name}' to page {page_id} (size: {file_size} bytes)...")
+
+    # Optional: warn if file is very large (Confluence limits can be 10–20MB)
+    if file_size > 15 * 1024 * 1024:
+        print("⚠️ Warning: attachment is > 15MB. Confluence may reject large files depending on plan/config.")
 
     for attempt in range(1, 4):
         try:
@@ -146,22 +151,37 @@ def upload_attachment(page_id, file_path):
                 res = requests.post(
                     url,
                     files=files,
-                    headers={"X-Atlassian-Token": "no-check"},
-                    auth=auth
+                    auth=auth,
+                    headers={"X-Atlassian-Token": "no-check"}
                 )
+
             if res.status_code in (200, 201):
-                print(f"📎 Uploaded successfully: {file_name}")
+                try:
+                    data = res.json()
+                    attachment_id = data["results"][0]["id"]
+                    print(f"📎 Uploaded '{file_name}' (id: {attachment_id})")
+                except Exception:
+                    print("⚠️ Uploaded, but could not parse JSON response.")
                 return file_name
 
-            print(f"⚠️ Attempt {attempt} failed (HTTP {res.status_code})")
+            print(f"⚠️ Attempt {attempt} upload failed (HTTP {res.status_code})")
+            try:
+                print("   Response JSON:", json.dumps(res.json(), indent=2))
+            except Exception:
+                print("   Response text:", res.text)
+
+            # If Confluence reports “already exists”, we can treat it as success
+            if res.status_code == 409:
+                print("ℹ️ Attachment already exists on the page; treating as success.")
+                return file_name
+
             time.sleep(2)
 
         except Exception as e:
             print(f"⚠️ Attempt {attempt} error: {e}")
             time.sleep(2)
 
-    sys.exit(f"❌ Failed to upload attachment after 3 attempts: {file_name}")
-
+    sys.exit(f"❌ Failed to upload attachment '{file_name}' after 3 attempts.")
 
 # =============================================================
 # Get current page version
