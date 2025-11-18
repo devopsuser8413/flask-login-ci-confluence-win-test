@@ -3,63 +3,76 @@ pipeline {
 
     options {
         timestamps()
+        ansiColor('xterm')
     }
 
     environment {
-        // ============================
-        // 💡 Core Configuration
-        // ============================
+
+        // ===========================================
+        // 🔧 SMTP Email Configuration
+        // ===========================================
         SMTP_HOST        = credentials('smtp-host')
         SMTP_PORT        = '587'
         SMTP_USER        = credentials('smtp-user')
         SMTP_PASS        = credentials('smtp-pass')
         REPORT_FROM      = credentials('sender-email')
-        REPORT_TO        = credentials('receiver-email')
+        REPORT_TO        = credentials('receiver-email')   // comma-separated
+        REPORT_CC        = ''                              // optional, comma-separated
+        REPORT_BCC       = ''                              // optional, comma-separated
 
-        CONFLUENCE_BASE  = credentials('confluence-base')
+        // ===========================================
+        // 🌐 Confluence Configuration
+        // ===========================================
+        CONFLUENCE_BASE  = credentials('confluence-base')  // e.g. https://your-org.atlassian.net/wiki
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
         CONFLUENCE_SPACE = 'DEMO'
         CONFLUENCE_TITLE = 'Test Result Report'
 
+        // ===========================================
+        // 🔐 GitHub Authentication
+        // ===========================================
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
+        // ===========================================
+        // 📁 Report Paths
+        // ===========================================
         REPORT_PATH   = 'report/report.html'
         REPORT_DIR    = 'report'
         VERSION_FILE  = 'report/version.txt'
-        VENV_PATH     = '.venv'
 
-        // ============================
-        // 🧩 UTF-8 + Python Encoding Fix
-        // ============================
-        PYTHONUTF8 = '1'
+        // ===========================================
+        // 🐍 Python Environment
+        // ===========================================
+        VENV_PATH      = '.venv'
+        PYTHONUTF8     = '1'
         PYTHONIOENCODING = 'utf-8'
         PYTHONLEGACYWINDOWSSTDIO = '1'
 
+        // ===========================================
+        // ⚡ PIP Cache Directory for Fast Installs
+        // ===========================================
         PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
     }
 
     stages {
 
-        // -------------------------------
+        // ============================================================================
         stage('Setup Encoding') {
             steps {
                 echo '🔧 Setting system encoding to UTF-8...'
                 bat '''
                     @echo off
                     chcp 65001 >nul
-                    set PYTHONUTF8=1
-                    set PYTHONIOENCODING=utf-8
-                    set PYTHONLEGACYWINDOWSSTDIO=1
-                    echo ✅ Windows console now using UTF-8 (code page 65001)
+                    echo UTF-8 activated (Code Page 65001)
                 '''
             }
         }
 
-        // -------------------------------
+        // ============================================================================
         stage('Checkout GitHub') {
             steps {
-                echo '📦 Checking out source code from GitHub repository...'
+                echo '📦 Checking out source code...'
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
@@ -68,86 +81,85 @@ pipeline {
                         credentialsId: 'github-credentials'
                     ]]
                 ])
-                echo '✅ Source code checkout complete.'
+                echo '✅ Checkout complete.'
             }
         }
 
-        // -------------------------------
+        // ============================================================================
         stage('Setup Python') {
             steps {
+                echo '🐍 Creating fresh Python virtual environment...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
-                    IF EXIST %VENV_PATH% (
-                        rmdir /s /q %VENV_PATH%
+
+                    if exist "%VENV_PATH%" (
+                        echo Removing old venv...
+                        rmdir /s /q "%VENV_PATH%"
                     )
-                    python -m venv %VENV_PATH%
-                    %VENV_PATH%\\Scripts\\python.exe -m ensurepip --upgrade
-                    %VENV_PATH%\\Scripts\\python.exe -m pip install --upgrade pip setuptools wheel
+
+                    python -m venv "%VENV_PATH%"
+
+                    "%VENV_PATH%\\Scripts\\python.exe" -m pip install --quiet ^
+                        --upgrade pip setuptools wheel ^
+                        --cache-dir "%PIP_CACHE_DIR%" --no-warn-script-location
                 """
-                echo '✅ All dependencies installed successfully.'
+                echo '🚀 Python environment ready.'
             }
         }
 
-        // // -------------------------------
+        // ============================================================================
         stage('Install Dependencies') {
             steps {
                 echo '📦 Installing Python dependencies...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
 
-                    set PIP_DISABLE_PIP_VERSION_CHECK=1
+                    if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
 
-                    echo Creating pip cache folder if not exists...
-                    if not exist %PIP_CACHE_DIR% mkdir %PIP_CACHE_DIR%
-
-                    echo Installing all dependencies using local cache...
-                    %VENV_PATH%\\Scripts\\pip.exe install --cache-dir %PIP_CACHE_DIR% -r requirements.txt
+                    "%VENV_PATH%\\Scripts\\pip.exe" install --quiet ^
+                        --cache-dir "%PIP_CACHE_DIR%" -r requirements.txt
                 """
-                echo '✅ Dependencies installed much faster!'
+                echo '⚡ Dependencies installed quickly with pip cache!'
             }
         }
 
-        // -------------------------------
+        // ============================================================================
         stage('Run Tests') {
             steps {
-                echo '🧪 Running unit tests and generating raw HTML report...'
+                echo '🧪 Running test suite and generating raw HTML report...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
                     if not exist "report" mkdir report
-                    echo Executing pytest...
-                    set PYTHONPATH=%CD%
-                    set FORCE_FAIL=true
-                    %VENV_PATH%\\Scripts\\python.exe -m pytest --html=%REPORT_PATH% --self-contained-html > report\\pytest_output.txt 2>&1 || exit /b 0
 
+                    set PYTHONPATH=%CD%
+
+                    "%VENV_PATH%\\Scripts\\python.exe" -m pytest ^
+                        --html=%REPORT_PATH% --self-contained-html ^
+                        > report\\pytest_output.txt 2>&1 || exit /b 0
                 """
-                echo '✅ Pytest completed and raw report generated.'
+                echo '✅ Tests executed (pytest_output.txt + raw HTML generated).'
             }
             post {
                 always {
-                    echo '📤 Archiving raw HTML test report for reference...'
+                    echo '📤 Archiving raw HTML report...'
                     archiveArtifacts artifacts: 'report/report.html', fingerprint: true
                 }
             }
         }
 
-        // -------------------------------
+        // ============================================================================
         stage('Generate Report') {
             steps {
-                echo '🎨 Enhancing report: adding summary chart and generating PDF...'
+                echo '🎨 Enhancing HTML report and creating PDF...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
-                    set PYTHONUTF8=1
-                    %VENV_PATH%\\Scripts\\python.exe generate_report.py
+                    "%VENV_PATH%\\Scripts\\python.exe" generate_report.py
                 """
-                echo '✅ Enhanced HTML and PDF reports generated successfully.'
+                echo '📄 Enhanced HTML & PDF report generated.'
             }
             post {
                 always {
-                    echo '📦 Archiving enhanced reports and version file...'
+                    echo '📦 Archiving enhanced reports...'
                     archiveArtifacts artifacts: 'report/test_result_report_v*.html', fingerprint: true
                     archiveArtifacts artifacts: 'report/test_result_report_v*.pdf', fingerprint: true
                     archiveArtifacts artifacts: 'report/version.txt', fingerprint: true
@@ -155,58 +167,60 @@ pipeline {
             }
         }
 
-        // -------------------------------
-        stage('Email Report') {
+        // ============================================================================
+        stage('Publish Report to Confluence') {
             steps {
-                echo '📧 Sending latest test report as PDF attachment via email...'
+                echo '🌐 Publishing reports to Confluence (new page per run)...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
-                    %VENV_PATH%\\Scripts\\python.exe send_report_email.py
+                    "%VENV_PATH%\\Scripts\\python.exe" publish_report_confluence.py
                 """
-                echo '✅ Email with PDF report sent successfully.'
+                echo '✅ Confluence page created and attachments uploaded.'
             }
         }
 
-        // -------------------------------
-        stage('Publish Report Confluence & Notify Email') {
+        // ============================================================================
+        stage('Email Report') {
             steps {
-                echo '🌐 Publishing latest HTML and PDF reports to Confluence page...'
+                echo '📧 Sending report email (with PDF + Confluence link)...'
                 bat """
                     @echo off
-                    chcp 65001 >nul
-                    %VENV_PATH%\\Scripts\\python.exe publish_report_confluence.py
+                    "%VENV_PATH%\\Scripts\\python.exe" send_report_email.py
                 """
-                echo '✅ Report (HTML & PDF) successfully published to Confluence.'
+                echo '📨 Email notifications sent.'
             }
         }
     }
 
-    // -------------------------------
+    // ============================================================================
     post {
+
         success {
             echo '''
-            ✅ PIPELINE COMPLETED SUCCESSFULLY!
+            ✅ PIPELINE COMPLETED SUCCESSFULLY
             =================================
-            - All stages executed cleanly.
-            - HTML & PDF reports archived and versioned.
-            - Email with PDF sent successfully.
-            - Reports published to Confluence.
+            ✔ All stages executed cleanly
+            ✔ Reports archived (HTML & PDF)
+            ✔ Confluence page published
+            ✔ Email sent to recipients
             =================================
             '''
         }
+
         failure {
             echo '''
-            ❌ PIPELINE FAILED!
+            ❌ PIPELINE FAILED
             =================================
-            - Check Jenkins logs for failed stage.
-            - Verify SMTP and Confluence credentials.
-            - Ensure report files exist and network access is available.
+            ⚠ Check failed stage logs
+            ⚠ Verify SMTP & Confluence credentials
+            ⚠ Ensure Python environment & files exist
+            ⚠ Confirm network accessibility
             =================================
             '''
         }
+
         always {
-            echo '🧹 Pipeline execution finished. Cleaning up workspace...'
+            echo '🧹 Cleaning up workspace...'
         }
     }
 }
